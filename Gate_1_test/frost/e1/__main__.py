@@ -173,37 +173,41 @@ def run_experiment(config: dict, is_pilot: bool = False):
                     def md_callback_with_force_error(current_atoms, step_idx):
                         nonlocal layer1_reference
                         edges_current = build_edge_geometry_from_ase(current_atoms, model.cutoff)
-                        
+
                         if step_idx == 0:
                             cache.initialize(edges_current, timestep=0)
                             layer1_reference = extract_layer1_reference_cache(model, current_atoms)
-                                
+
                         stats = cache.step(edges_current, timestep=step_idx)
                         logger_obj.log_step(stats)
-                        
-                        # Run force error eval
+
                         if step_idx in force_eval_frames:
                             logger.info("    Force error eval at frame %d", step_idx)
-                            current_layer1 = extract_layer1_reference_cache(model, current_atoms)
                             exact_energy, exact_forces = compute_exact_forces(current_atoms, model)
+                            current_layer1 = extract_layer1_reference_cache(model, current_atoms)
                             res = {}
-                            same_edges = torch.equal(
-                                layer1_reference["edge_index"], current_layer1["edge_index"]
-                            )
                             for eps in tolerances:
-                                delta = current_layer1["vectors_ref"] - layer1_reference["vectors_ref"]
-                                clean = torch.linalg.vector_norm(delta, dim=1) <= eps / 1000.0
-                                if not same_edges:
-                                    clean = torch.zeros_like(clean)
+                                dirty_keys = stats["dirty_keys_by_eps"][eps]
+                                clean_mask = torch.ones(current_layer1["g_ref"].shape[0], dtype=torch.bool)
+                                if dirty_keys:
+                                    dirty_idx = list(range(len(current_layer1["g_ref"])))
+                                    clean_mask[dirty_idx] = False
                                 _, cached_forces = compute_cached_forces(
-                                    current_atoms, model, clean.cpu(),
-                                    layer1_reference["g_ref"], mode=1,
+                                    current_atoms,
+                                    model,
+                                    clean_mask,
+                                    current_layer1["g_ref"],
+                                    mode=1,
+                                    J_ref=current_layer1["J_ref"],
                                     vectors=current_layer1["vectors_ref"],
-                                    vectors_ref=layer1_reference["vectors_ref"],
+                                    vectors_ref=current_layer1["vectors_ref"],
                                 )
                                 eps_stats = compute_force_error_statistics(exact_forces, cached_forces)
-                                eps_stats.update({"epsilon": eps, "exact_forces": exact_forces,
-                                                  "stale_forces": cached_forces})
+                                eps_stats.update({
+                                    "epsilon": eps,
+                                    "exact_forces": exact_forces,
+                                    "stale_forces": cached_forces,
+                                })
                                 res[eps] = eps_stats
                             for eps, eps_res in res.items():
                                 logger_obj.log_force_error_frame(
@@ -212,7 +216,7 @@ def run_experiment(config: dict, is_pilot: bool = False):
                                     exact_forces=eps_res["exact_forces"],
                                     stale_forces=eps_res["stale_forces"],
                                     positions=current_atoms.get_positions(),
-                                    cell=current_atoms.get_cell().array
+                                    cell=current_atoms.get_cell().array,
                                 )
 
                     with logger_obj as log:

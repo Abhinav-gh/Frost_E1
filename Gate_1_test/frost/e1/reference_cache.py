@@ -116,52 +116,20 @@ class PerEdgeReferenceCache:
         """
         Process one MD step.
 
-        For every current edge:
-          1. Compute Δr and Δrhat relative to its reference.
-          2. For each tolerance epsilon, classify as dirty or clean.
-          3. If dirty at epsilon: update reference for that edge.
-
-        NOTE: The reference update is per-tolerance. This means each edge
-        has multiple reference states, one per epsilon. This is correct for
-        measuring the dirty fraction independently at each tolerance.
-
-        Parameters
-        ----------
-        edges_current : dict
-            Current edge geometry from build_edge_geometry_from_ase().
-        timestep : int
-            Current simulation timestep.
-
-        Returns
-        -------
-        stats : dict with keys:
-            'timestep': int
-            'n_edges_current': int
-            'n_edges_new': int       # edges not in previous reference
-            'n_edges_removed': int   # edges that disappeared
-            'perturbations': dict of {key: {'delta_r': float, 'delta_rhat': float}}
-            'dirty_counts': dict of {epsilon: int}  # n dirty edges per epsilon
-            'dirty_fractions': dict of {epsilon: float}
-            'mean_delta_r': float
-            'std_delta_r': float
-            'p50_delta_r': float
-            'p90_delta_r': float
-            'p99_delta_r': float
-            'mean_delta_rhat': float
+        This is the real per-edge state transition for the E1 harness. It tracks
+        the current dirty mask for each tolerance, the generation counters, and
+        the reference refresh semantics without mutating atomic coordinates.
         """
         self._timestep = timestep
         self._n_steps += 1
 
-        # Compute perturbations for all current edges
         perturbations = compute_all_perturbations_batch(edges_current, self._entries_as_ref_dict())
 
-        # Count edges that no longer exist (removed from neighbor list)
         current_keys = set(edges_current.keys())
         old_keys = set(self._entries.keys())
         n_removed = len(old_keys - current_keys)
         n_new = len(current_keys - old_keys)
 
-        # Collect Δr / Δrhat arrays for statistics
         delta_r_vals = []
         delta_rhat_vals = []
         for key, pert in perturbations.items():
@@ -172,8 +140,8 @@ class PerEdgeReferenceCache:
         delta_r_arr = np.array(delta_r_vals) if delta_r_vals else np.array([0.0])
         delta_rhat_arr = np.array(delta_rhat_vals) if delta_rhat_vals else np.array([0.0])
 
-        # Per-tolerance: compute dirty count and update references
         dirty_counts = {}
+        dirty_keys_by_eps = {eps: set() for eps in self.tolerances}
         for eps in self.tolerances:
             n_dirty = 0
             for key, pert in perturbations.items():
@@ -181,9 +149,8 @@ class PerEdgeReferenceCache:
                 is_new = pert["new"]
 
                 if is_new:
-                    # New edge: always dirty (must compute fresh)
                     n_dirty += 1
-                    # Create new cache entry for this edge
+                    dirty_keys_by_eps[eps].add(key)
                     if key not in self._entries:
                         self._entries[key] = EdgeCacheEntry(
                             edge_id=key,
@@ -196,7 +163,6 @@ class PerEdgeReferenceCache:
                             valid=True,
                         )
                 else:
-                    # Existing edge: check predicate
                     entry = self._entries[key]
                     dirty = is_dirty_zeroth_order(
                         d_current=geom["d_ij"],
@@ -207,18 +173,16 @@ class PerEdgeReferenceCache:
                     )
                     if dirty:
                         n_dirty += 1
-                        # Refresh reference for this edge
+                        dirty_keys_by_eps[eps].add(key)
                         entry.refresh(geom["r_ij"], geom["d_ij"], geom["rhat_ij"], timestep)
 
             dirty_counts[eps] = n_dirty
 
-        # Age increment for all surviving edges
         for key in current_keys:
             if key in self._entries:
                 if self._entries[key].ref_timestep != timestep:
                     self._entries[key].age += 1
 
-        # Remove stale entries for disappeared edges
         for key in old_keys - current_keys:
             del self._entries[key]
 
@@ -236,6 +200,8 @@ class PerEdgeReferenceCache:
             "perturbations": perturbations,
             "dirty_counts": dirty_counts,
             "dirty_fractions": dirty_fractions,
+            "dirty_keys_by_eps": dirty_keys_by_eps,
+            "valid_edges": set(self._entries.keys()),
             "mean_delta_r": float(np.mean(delta_r_arr)),
             "std_delta_r": float(np.std(delta_r_arr)),
             "p50_delta_r": float(np.percentile(delta_r_arr, 50)),
