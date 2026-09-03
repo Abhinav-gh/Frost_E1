@@ -1,0 +1,121 @@
+# ============================================================
+# Frost E1 — Redundancy Characterisation
+# Master configuration file.
+# All defaults taken directly from the Frost research document.
+# Do NOT change these defaults without documenting the reason.
+# ============================================================
+
+# -----------------------------------------------------------
+# Models to evaluate
+# -----------------------------------------------------------
+models:
+  - mace-mp-0       # Universal pretrained; covers all systems
+  # - allegro       # BLOCKED: no public universal checkpoint.
+                    # Enable only when a trained checkpoint is available.
+
+# -----------------------------------------------------------
+# Systems
+# -----------------------------------------------------------
+# Each entry: name, n_atoms (target), construction method
+systems:
+  - name: Si
+    species: [Si]
+    n_atoms: 64         # 2x2x2 supercell of diamond-cubic unit cell (8 atoms)
+    structure: diamond_si
+
+  - name: Cu
+    species: [Cu]
+    n_atoms: 108        # 3x3x3 supercell of FCC unit cell (4 atoms)
+    structure: fcc_cu
+
+  - name: Li3PO4
+    species: [Li, P, O]
+    n_atoms: 112        # 2x2x1 supercell of gamma-Li3PO4 (28 atoms/unit cell)
+    structure: gamma_li3po4
+
+  - name: water
+    species: [O, H]
+    n_atoms: 192        # 64 water molecules = 192 atoms
+    structure: liquid_water
+
+  - name: SiO2
+    species: [Si, O]
+    n_atoms: 216        # 72 SiO2 formula units (melt-quench glass)
+    structure: silica_glass
+
+# -----------------------------------------------------------
+# Temperatures (K)
+# -----------------------------------------------------------
+temperatures:
+  - 300
+  - 1000
+
+# -----------------------------------------------------------
+# MD protocol
+# (from Frost document E1 specification)
+# -----------------------------------------------------------
+equilibration_ps: 20.0          # 20 ps NVT Langevin equilibration
+equilibration_steps: 20000      # 20 ps at dt=1 fs = 20,000 steps
+production_steps: 10000         # 10,000 production steps
+timestep_fs: 1.0                # 1 fs timestep
+langevin_gamma: 0.01            # friction coefficient 0.01 fs^-1 (from Frost doc)
+thermostat: langevin
+ensemble: nvt
+
+# -----------------------------------------------------------
+# Tolerance schedule
+# (Frost doc: 8 values spanning 0.1 -> 50 meV/Angstrom)
+# Using log-uniform spacing as specified.
+# -----------------------------------------------------------
+tolerances_meV_per_A:
+  - 0.1
+  - 0.316
+  - 1.0
+  - 1.778
+  - 3.162
+  - 10.0
+  - 17.78
+  - 50.0
+
+# -----------------------------------------------------------
+# Force-error experiment
+# -----------------------------------------------------------
+num_force_error_frames: 100     # 100 randomly sampled production frames
+
+# -----------------------------------------------------------
+# Statistical reproducibility
+# -----------------------------------------------------------
+num_repetitions: 3
+seeds:
+  - 42
+  - 137
+  - 271
+
+# -----------------------------------------------------------
+# Compute / storage
+# -----------------------------------------------------------
+dtype: float64                  # double precision for measurements
+device: cuda                    # use GPU; falls back to cpu if unavailable
+output_dir: results/e1
+
+# -----------------------------------------------------------
+# Logging strategy
+# Storage: per-step aggregate statistics (NOT raw per-edge).
+# Raw per-edge data stored only for force-error sample frames.
+# See e1_environment_report.md §9 for storage estimates.
+# -----------------------------------------------------------
+log_every_step: true
+log_format: hdf5                # chunked HDF5; avoids giant CSV
+chunk_size: 500                 # write chunks of 500 steps at a time
+
+# -----------------------------------------------------------
+# Pilot run (quick validation before full matrix)
+# -----------------------------------------------------------
+pilot:
+  enabled: true
+  system: Si
+  temperature: 300
+  seed: 42
+  model: mace-mp-0
+  equilibration_steps: 100      # short pilot
+  production_steps: 500
