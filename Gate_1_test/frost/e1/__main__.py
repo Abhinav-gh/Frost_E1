@@ -17,6 +17,7 @@ import yaml
 from pathlib import Path
 import time
 import numpy as np
+import torch
 
 from frost.e1.systems import build_system
 from frost.e1.model_interface import load_model
@@ -24,7 +25,12 @@ from frost.e1.geometry import build_edge_geometry_from_ase
 from frost.e1.reference_cache import PerEdgeReferenceCache
 from frost.e1.trajectory import run_md_trajectory
 from frost.e1.logging_hdf5 import E1Logger
-from frost.e1.force_error import run_force_error_experiment
+from frost.e1.force_error import (
+    compute_exact_forces,
+    compute_cached_forces,
+    compute_force_error_statistics,
+    extract_layer1_reference_cache,
+)
 from frost.e1.analysis import (
     load_trajectory_stats,
     compute_dirty_fraction_summary,
@@ -161,58 +167,44 @@ def run_experiment(config: dict, is_pilot: bool = False):
                             # atom reference positions globally when they are refreshed.
                             pass # We'll do the actual force error inside the callback
 
-                    # Because atom reference positions weren't explicitly tracked in EdgeCacheEntry 
-                    # (it tracks edges), we will maintain an atom-level reference position array for the
-                    # force error approximation.
-                    
-                    atom_ref_pos = {} # per epsilon
-                    for eps in tolerances:
-                        atom_ref_pos[eps] = atoms.get_positions().copy()
+                    layer1_reference = None
                     
                     # We will override the callback to properly update atom_ref_pos based on which atoms are NOT dirty
                     def md_callback_with_force_error(current_atoms, step_idx):
+                        nonlocal layer1_reference
                         edges_current = build_edge_geometry_from_ase(current_atoms, model.cutoff)
                         
                         if step_idx == 0:
                             cache.initialize(edges_current, timestep=0)
-                            for eps in tolerances:
-                                atom_ref_pos[eps] = current_atoms.get_positions().copy()
+                            layer1_reference = extract_layer1_reference_cache(model, current_atoms)
                                 
                         stats = cache.step(edges_current, timestep=step_idx)
                         logger_obj.log_step(stats)
                         
-                        # Update atom_ref_pos: if an atom is dirty (any edge dirty), it gets updated to current
-                        # This is a safe upper bound: if we update it, it's not stale.
-                        # Wait, the stale atom definition: an atom is stale if ALL its edges are dirty.
-                        # Wait no, if an atom's edges are dirty, we must RECOMPUTE (it is NOT stale).
-                        # So if an atom has ANY dirty edge, we must recompute it -> its reference position becomes current.
-                        # If ALL its edges are clean, it can be STALE -> it keeps its old reference position.
-                        
-                        curr_pos = current_atoms.get_positions()
-                        for eps in tolerances:
-                            # find dirty edges
-                            dirty_atoms = set()
-                            for key, pert in stats["perturbations"].items():
-                                i, j, shift = key
-                                if pert["new"] or pert["delta_r"] > eps:
-                                    dirty_atoms.add(i)
-                                    dirty_atoms.add(j)
-                                    
-                            # Update reference positions for dirty atoms
-                            if dirty_atoms:
-                                dirty_idx = list(dirty_atoms)
-                                atom_ref_pos[eps][dirty_idx] = curr_pos[dirty_idx]
-                        
                         # Run force error eval
                         if step_idx in force_eval_frames:
                             logger.info("    Force error eval at frame %d", step_idx)
-                            res = run_force_error_experiment(
-                                current_atoms,
-                                stats["perturbations"],
-                                atom_ref_pos, # Note: modified run_force_error_experiment slightly
-                                tolerances,
-                                model
+                            current_layer1 = extract_layer1_reference_cache(model, current_atoms)
+                            exact_energy, exact_forces = compute_exact_forces(current_atoms, model)
+                            res = {}
+                            same_edges = torch.equal(
+                                layer1_reference["edge_index"], current_layer1["edge_index"]
                             )
+                            for eps in tolerances:
+                                delta = current_layer1["vectors_ref"] - layer1_reference["vectors_ref"]
+                                clean = torch.linalg.vector_norm(delta, dim=1) <= eps / 1000.0
+                                if not same_edges:
+                                    clean = torch.zeros_like(clean)
+                                _, cached_forces = compute_cached_forces(
+                                    current_atoms, model, clean.cpu(),
+                                    layer1_reference["g_ref"], mode=1,
+                                    vectors=current_layer1["vectors_ref"],
+                                    vectors_ref=layer1_reference["vectors_ref"],
+                                )
+                                eps_stats = compute_force_error_statistics(exact_forces, cached_forces)
+                                eps_stats.update({"epsilon": eps, "exact_forces": exact_forces,
+                                                  "stale_forces": cached_forces})
+                                res[eps] = eps_stats
                             for eps, eps_res in res.items():
                                 logger_obj.log_force_error_frame(
                                     frame_timestep=step_idx,
@@ -222,31 +214,6 @@ def run_experiment(config: dict, is_pilot: bool = False):
                                     positions=current_atoms.get_positions(),
                                     cell=current_atoms.get_cell().array
                                 )
-
-                    # Monkey-patch force error runner to accept a dict of ref positions per eps
-                    def custom_force_error(frame_atoms, perturbations, ref_pos_dict, tols, mdl):
-                        from frost.e1.force_error import compute_exact_forces, compute_stale_forces, compute_force_error_statistics
-                        exact_e, exact_f = compute_exact_forces(frame_atoms, mdl)
-                        res = {}
-                        for e in tols:
-                            # Stale configuration: we just use ref_pos_dict[e] directly for ALL atoms!
-                            # Because we already updated dirty atoms to have current pos, 
-                            # and stale atoms kept their old pos.
-                            atoms_stale = frame_atoms.copy()
-                            atoms_stale.set_positions(ref_pos_dict[e])
-                            _, stale_f = mdl.evaluate(atoms_stale)
-                            
-                            stats = compute_force_error_statistics(exact_f, stale_f)
-                            stats["epsilon"] = e
-                            stats["exact_forces"] = exact_f
-                            stats["stale_forces"] = stale_f
-                            res[e] = stats
-                        return res
-                    
-                    # Override the global run_force_error_experiment to use our custom one 
-                    # that perfectly tracks atom positions per epsilon
-                    global run_force_error_experiment
-                    run_force_error_experiment = custom_force_error
 
                     with logger_obj as log:
                         run_md_trajectory(

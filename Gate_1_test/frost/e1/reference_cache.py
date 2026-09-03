@@ -35,27 +35,20 @@ class EdgeCacheEntry:
     """
     Per-edge cache record for the simulated E1 cache.
 
-    Attributes
-    ----------
-    ref_r_ij : np.ndarray, shape (3,)
-        Reference displacement vector (MIC-corrected) at last refresh.
-    ref_d_ij : float
-        Reference scalar distance at last refresh.
-    ref_rhat_ij : np.ndarray, shape (3,)
-        Reference unit direction at last refresh.
-    ref_timestep : int
-        Simulation timestep at which reference was set.
-    age : int
-        Number of steps since last reference refresh.
-    lifetime_history : List[int]
-        History of consecutive valid lifetimes (steps between refreshes).
-        Populated each time the entry is refreshed after being dirty.
+    This state intentionally mirrors the stage-1 Frost design more closely than
+    the original geometry-only cache: each edge has its own reference geometry,
+    an associated layer-1 cache value, and a validity/generation counter.
     """
+    edge_id: Tuple
     ref_r_ij: np.ndarray
     ref_d_ij: float
     ref_rhat_ij: np.ndarray
     ref_timestep: int
     age: int = 0
+    generation: int = 0
+    valid: bool = True
+    g_ref: Optional[np.ndarray] = None
+    J_ref: Optional[np.ndarray] = None
     lifetime_history: List[int] = field(default_factory=list)
 
     def refresh(self, r_ij: np.ndarray, d_ij: float, rhat_ij: np.ndarray, timestep: int) -> None:
@@ -67,6 +60,8 @@ class EdgeCacheEntry:
         self.ref_rhat_ij = rhat_ij.copy()
         self.ref_timestep = timestep
         self.age = 0
+        self.valid = True
+        self.generation += 1
 
 
 class PerEdgeReferenceCache:
@@ -106,11 +101,14 @@ class PerEdgeReferenceCache:
         self._timestep = timestep
         for key, geom in edges.items():
             self._entries[key] = EdgeCacheEntry(
+                edge_id=key,
                 ref_r_ij=geom["r_ij"].copy(),
                 ref_d_ij=geom["d_ij"],
                 ref_rhat_ij=geom["rhat_ij"].copy(),
                 ref_timestep=timestep,
                 age=0,
+                generation=0,
+                valid=True,
             )
         self._n_steps = 0
 
@@ -188,11 +186,14 @@ class PerEdgeReferenceCache:
                     # Create new cache entry for this edge
                     if key not in self._entries:
                         self._entries[key] = EdgeCacheEntry(
+                            edge_id=key,
                             ref_r_ij=geom["r_ij"].copy(),
                             ref_d_ij=geom["d_ij"],
                             ref_rhat_ij=geom["rhat_ij"].copy(),
                             ref_timestep=timestep,
                             age=0,
+                            generation=0,
+                            valid=True,
                         )
                 else:
                     # Existing edge: check predicate

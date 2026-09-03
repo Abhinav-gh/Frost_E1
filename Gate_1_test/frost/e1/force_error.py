@@ -57,6 +57,50 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from ase import Atoms
 
+from frost.e1.mace_patch import apply_frost_patch
+
+
+def extract_layer1_reference_cache(model_interface, atoms: Atoms) -> dict:
+    """Extract MACE's internal layer-1 messages and vector Jacobians.
+
+    The returned tensors follow MACE's internal edge ordering and can therefore
+    be passed directly to :func:`compute_cached_forces`.
+    """
+    import torch
+
+    calculator = model_interface.calculator
+    model = calculator.models[0]
+    batch = calculator._clone_batch(calculator._atoms_to_batch(atoms))
+    dtype = next(model.parameters()).dtype
+    for key in batch.keys:
+        value = batch[key]
+        if torch.is_tensor(value) and torch.is_floating_point(value):
+            batch[key] = value.to(dtype=dtype)
+    batch["positions"].requires_grad_(True)
+    state = {
+        "active": True,
+        "mode": 0,
+        "clean_mask": torch.empty(0, dtype=torch.bool),
+        "g_ref": torch.empty(0),
+    }
+    from frost.e1.mace_patch import capture_layer1_vectors
+    with capture_layer1_vectors(model, state), apply_frost_patch(model, state):
+        model(batch.to_dict(), compute_force=False)
+    messages = state["mji_exact"]
+    vectors = state["vectors"]
+    jacobian = torch.zeros(messages.shape[0], messages.shape[1], 3, device=messages.device, dtype=messages.dtype)
+    for edge in range(messages.shape[0]):
+        for feature in range(messages.shape[1]):
+            jacobian[edge, feature] = torch.autograd.grad(
+                messages[edge, feature], vectors, retain_graph=True
+            )[0][edge]
+    return {
+        "g_ref": messages.detach(),
+        "J_ref": jacobian.detach(),
+        "vectors_ref": vectors.detach(),
+        "edge_index": state["edge_index"].detach(),
+    }
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,6 +229,37 @@ def compute_stale_forces(
     assert np.all(np.isfinite(stale_forces)), "Non-finite stale forces detected"
 
     return stale_forces, stale_mask
+
+
+def compute_cached_forces(
+    atoms: Atoms,
+    model_interface,
+    clean_mask,
+    g_ref,
+    mode: int = 1,
+    J_ref=None,
+    vectors=None,
+    vectors_ref=None,
+) -> Tuple[float, np.ndarray]:
+    """Evaluate MACE on unchanged coordinates with edge-local interception."""
+    import torch
+
+    state = {
+        "active": True,
+        "mode": mode,
+        "clean_mask": torch.as_tensor(clean_mask, dtype=torch.bool),
+        "g_ref": torch.as_tensor(g_ref),
+    }
+    if mode == 2:
+        if J_ref is None or vectors is None or vectors_ref is None:
+            raise ValueError("First-order cache requires J_ref, vectors, and vectors_ref")
+        state.update({
+            "J_ref": torch.as_tensor(J_ref),
+            "vectors": torch.as_tensor(vectors),
+            "vectors_ref": torch.as_tensor(vectors_ref),
+        })
+    with apply_frost_patch(model_interface._calculator.models[0], state):
+        return model_interface.evaluate(atoms)
 
 
 def compute_force_error_statistics(
