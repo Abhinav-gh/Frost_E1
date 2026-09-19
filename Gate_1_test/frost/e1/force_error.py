@@ -21,36 +21,16 @@ MACE-MP-0 is a message-passing GNN that takes:
 The Frost paper's central claim is that the expensive edge-local
 tensor-product factor (layer 1 of MACE) is edge-local and can be cached.
 
-For E1, we implement a simulated stale cache by:
-
-  1. Identifying "stale" edges: edges whose geometry has changed beyond
-     epsilon (using our per-edge reference cache).
-  2. For those edges, "stale" means their reference-time positions are used.
-  3. We construct a perturbed configuration where stale atoms are held at
-     reference positions and compute forces with MACE on that configuration.
-
-CRITICAL LIMITATION:
-  This approach moves individual ATOMS (not individual edges) to reference
-  positions. A single atom may belong to multiple edges. Isolating a single
-  edge's staleness while leaving others current requires model internals.
-
-  For E1 (measurement only), we implement a conservative approximation:
-  - For each sampled frame and each epsilon, identify "stale atoms":
-    atoms i where ALL edges (i,j) are dirty.
-  - Replace stale atoms' positions with their reference positions.
-  - Compute forces on this modified configuration.
-
-  This is documented as an approximation. The true Frost mechanism
-  operates at the edge level, not the atom level. The force error
-  measured here is an UPPER BOUND on what edge-level staleness would
-  cause (because we're moving entire atoms).
-
-  The docs/e1_stale_cache_definition.md file documents this precisely.
+The valid comparison path keeps coordinates unchanged and intercepts MACE's
+first-layer edge messages before aggregation. The legacy atom-freezing helpers
+remain below only for historical analysis and must not be used as Frost
+correctness evidence.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
@@ -60,12 +40,77 @@ from ase import Atoms
 from frost.e1.mace_patch import apply_frost_patch
 
 
+def _eager_spherical_harmonics(vector, spherical_harmonics):
+    """Match e3nn's l<=3 basis without its scripted kernel boundary."""
+    import torch
+
+    x = torch.nn.functional.normalize(vector, dim=-1) if spherical_harmonics.normalize else vector
+    x_coord, y_coord, z_coord = x.unbind(-1)
+    sh_0_0 = torch.ones_like(x_coord)
+    sh_1_0, sh_1_1, sh_1_2 = x_coord, y_coord, z_coord
+    y2 = y_coord.pow(2)
+    x2z2 = x_coord.pow(2) + z_coord.pow(2)
+    sh_2 = (
+        math.sqrt(3.0) * x_coord * z_coord,
+        math.sqrt(3.0) * x_coord * y_coord,
+        y2 - 0.5 * x2z2,
+        math.sqrt(3.0) * y_coord * z_coord,
+        math.sqrt(3.0) / 2.0 * (z_coord.pow(2) - x_coord.pow(2)),
+    )
+    sh_3 = (
+        math.sqrt(5.0 / 6.0) * (sh_2[0] * z_coord + sh_2[4] * x_coord),
+        math.sqrt(5.0) * sh_2[0] * y_coord,
+        math.sqrt(3.0 / 8.0) * (4.0 * y2 - x2z2) * x_coord,
+        0.5 * y_coord * (2.0 * y2 - 3.0 * x2z2),
+        math.sqrt(3.0 / 8.0) * z_coord * (4.0 * y2 - x2z2),
+        math.sqrt(5.0) * sh_2[4] * y_coord,
+        math.sqrt(5.0 / 6.0) * (sh_2[4] * z_coord - sh_2[0] * x_coord),
+    )
+    all_values = torch.stack(
+        (sh_0_0, sh_1_0, sh_1_1, sh_1_2, *sh_2, *sh_3), dim=-1
+    )
+    ls = spherical_harmonics._ls_list
+    if ls != list(range(max(ls) + 1)):
+        all_values = torch.cat(
+            [all_values[..., l * l : (l + 1) * (l + 1)] for l in ls], dim=-1
+        )
+    scales = []
+    for l in ls:
+        if spherical_harmonics.normalization == "integral":
+            scale = math.sqrt(2 * l + 1) / math.sqrt(4 * math.pi)
+        elif spherical_harmonics.normalization == "component":
+            scale = math.sqrt(2 * l + 1)
+        else:
+            scale = 1.0
+        scales.extend([scale] * (2 * l + 1))
+    return all_values * torch.tensor(scales, dtype=all_values.dtype, device=all_values.device)
+
+
 def extract_layer1_reference_cache(model_interface, atoms: Atoms) -> dict:
     """Extract MACE's internal layer-1 messages and vector Jacobians.
 
     The returned tensors follow MACE's internal edge ordering and can therefore
     be passed directly to :func:`compute_cached_forces`.
     """
+    import torch
+
+    messages, vectors, edge_index = extract_layer1_messages(model_interface, atoms)
+    jacobian = torch.zeros(messages.shape[0], messages.shape[1], 3, device=messages.device, dtype=messages.dtype)
+    for edge in range(messages.shape[0]):
+        for feature in range(messages.shape[1]):
+            jacobian[edge, feature] = torch.autograd.grad(
+                messages[edge, feature], vectors, retain_graph=True
+            )[0][edge]
+    return {
+        "g_ref": messages.detach(),
+        "J_ref": jacobian.detach(),
+        "vectors_ref": vectors.detach(),
+        "edge_index": edge_index.detach(),
+    }
+
+
+def extract_layer1_messages(model_interface, atoms: Atoms) -> tuple:
+    """Capture first-layer messages without computing any Jacobians."""
     import torch
 
     calculator = model_interface.calculator
@@ -88,18 +133,137 @@ def extract_layer1_reference_cache(model_interface, atoms: Atoms) -> dict:
         model(batch.to_dict(), compute_force=False)
     messages = state["mji_exact"]
     vectors = state["vectors"]
-    jacobian = torch.zeros(messages.shape[0], messages.shape[1], 3, device=messages.device, dtype=messages.dtype)
-    for edge in range(messages.shape[0]):
-        for feature in range(messages.shape[1]):
-            jacobian[edge, feature] = torch.autograd.grad(
-                messages[edge, feature], vectors, retain_graph=True
-            )[0][edge]
+    return messages, vectors, state["edge_index"]
+
+
+def extract_layer1_local_inputs(model_interface, atoms: Atoms) -> dict:
+    """Capture the real first-layer local MACE inputs without derivatives."""
+    import torch
+
+    calculator = model_interface.calculator
+    model = calculator.models[0]
+    batch = calculator._clone_batch(calculator._atoms_to_batch(atoms))
+    dtype = next(model.parameters()).dtype
+    for key in batch.keys:
+        value = batch[key]
+        if torch.is_tensor(value) and torch.is_floating_point(value):
+            batch[key] = value.to(dtype=dtype)
+    state = {
+        "active": True,
+        "mode": 0,
+        "capture_local_inputs": True,
+        "clean_mask": torch.empty(0, dtype=torch.bool),
+        "g_ref": torch.empty(0),
+    }
+    from frost.e1.mace_patch import capture_layer1_vectors
+    with capture_layer1_vectors(model, state), apply_frost_patch(model, state):
+        model(batch.to_dict(), compute_force=False)
+    state["local_inputs"]["vectors"] = state["vectors"].detach()
+    state["local_inputs"]["unit_shifts"] = batch["unit_shifts"].detach()
+    return state["local_inputs"]
+
+
+def extract_layer1_dense_jacobian(
+    model_interface,
+    atoms: Atoms,
+    edge_limit: Optional[int] = None,
+    chunk_size: int = 16,
+) -> dict:
+    """Reference dense per-edge Jacobian using vectorized ``jacrev``."""
+    import torch
+    from torch.func import jacrev, vmap
+
+    local = extract_layer1_local_inputs(model_interface, atoms)
+    model = model_interface.calculator.models[0]
+    block = model.interactions[0]
+    edge_count = local["vectors"].shape[0]
+    limit = edge_count if edge_limit is None else min(edge_limit, edge_count)
+    vectors = local["vectors"][:limit].detach()
+    edge_index = local["edge_index"][:, :limit]
+    source_features = local["node_feats"][edge_index[0]].detach()
+    node_attrs = local["node_attrs"]
+    atomic_numbers = model.atomic_numbers
+
+    def edge_message(vector, source_feature, one_edge_index):
+        vector = vector.reshape(1, 3)
+        edge_attrs = _eager_spherical_harmonics(vector, model.spherical_harmonics)
+        lengths = torch.linalg.vector_norm(vector, dim=-1, keepdim=True)
+        edge_feats, cutoff = model.radial_embedding(
+            lengths, node_attrs, one_edge_index.reshape(2, 1), atomic_numbers
+        )
+        weights = block.conv_tp_weights(edge_feats)
+        if cutoff is not None:
+            weights = weights * cutoff
+        return block.conv_tp(source_feature.reshape(1, -1), edge_attrs, weights)[0]
+
+    jacobian_chunks = []
+    message_chunks = []
+    jacobian_fn = vmap(jacrev(edge_message, argnums=0))
+    message_fn = vmap(edge_message)
+    for start in range(0, limit, chunk_size):
+        stop = min(start + chunk_size, limit)
+        chunk_vectors = vectors[start:stop]
+        chunk_sources = source_features[start:stop]
+        chunk_indices = edge_index[:, start:stop].T
+        jacobian_chunks.append(jacobian_fn(chunk_vectors, chunk_sources, chunk_indices))
+        message_chunks.append(message_fn(chunk_vectors, chunk_sources, chunk_indices))
+    jacobian = torch.cat(jacobian_chunks, dim=0)
+    messages = torch.cat(message_chunks, dim=0)
     return {
         "g_ref": messages.detach(),
         "J_ref": jacobian.detach(),
         "vectors_ref": vectors.detach(),
-        "edge_index": state["edge_index"].detach(),
+        "edge_index": edge_index.detach(),
+        "edge_count_total": edge_count,
     }
+
+
+def _layer1_edge_message_function(model, block, local_inputs, edge: int):
+    """Build the real MACE first-layer message function for one edge."""
+    import torch
+
+    edge_index = local_inputs["edge_index"][:, edge : edge + 1]
+    source = local_inputs["node_feats"][edge_index[0, 0] : edge_index[0, 0] + 1].detach()
+    node_attrs = local_inputs["node_attrs"]
+    atomic_numbers = model.atomic_numbers
+
+    def message(vector):
+        vector = vector.reshape(1, 3)
+        edge_attrs = _eager_spherical_harmonics(vector, model.spherical_harmonics)
+        lengths = torch.linalg.vector_norm(vector, dim=-1, keepdim=True)
+        edge_feats, cutoff = model.radial_embedding(
+            lengths, node_attrs, edge_index, atomic_numbers
+        )
+        weights = block.conv_tp_weights(edge_feats)
+        if cutoff is not None:
+            weights = weights * cutoff
+        return block.conv_tp(source, edge_attrs, weights)[0]
+
+    return message
+
+
+def layer1_edge_jvp(model_interface, local_inputs: dict, edge: int, direction):
+    """Compute one real-MACE edge JVP without materializing its Jacobian."""
+    import torch
+    from torch.autograd.functional import jvp
+
+    model = model_interface.calculator.models[0]
+    message = _layer1_edge_message_function(model, model.interactions[0], local_inputs, edge)
+    vector = local_inputs["vectors"][edge].detach()
+    direction = torch.as_tensor(direction, device=vector.device, dtype=vector.dtype)
+    return jvp(message, vector, direction, create_graph=False, strict=True)[1]
+
+
+def layer1_edge_vjp(model_interface, local_inputs: dict, edge: int, upstream):
+    """Compute one real-MACE edge VJP without materializing its Jacobian."""
+    import torch
+
+    model = model_interface.calculator.models[0]
+    message = _layer1_edge_message_function(model, model.interactions[0], local_inputs, edge)
+    vector = local_inputs["vectors"][edge].detach().requires_grad_(True)
+    upstream = torch.as_tensor(upstream, device=vector.device, dtype=vector.dtype)
+    output = message(vector)
+    return torch.autograd.grad((output * upstream).sum(), vector)[0]
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +408,9 @@ def compute_cached_forces(
     """Evaluate MACE on unchanged coordinates with edge-local interception."""
     import torch
 
+    # ASE otherwise reuses the prior exact result when positions are unchanged,
+    # which would bypass the patched MACE forward entirely.
+    model_interface.calculator.results = {}
     state = {
         "active": True,
         "mode": mode,
@@ -258,7 +425,8 @@ def compute_cached_forces(
             "vectors": torch.as_tensor(vectors),
             "vectors_ref": torch.as_tensor(vectors_ref),
         })
-    with apply_frost_patch(model_interface._calculator.models[0], state):
+    from frost.e1.mace_patch import capture_layer1_vectors
+    with capture_layer1_vectors(model_interface._calculator.models[0], state), apply_frost_patch(model_interface._calculator.models[0], state):
         return model_interface.evaluate(atoms)
 
 

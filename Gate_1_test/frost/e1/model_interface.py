@@ -11,21 +11,16 @@ Responsibilities:
   5. Document what the model's internal edge ordering is and how we match it.
 
 IMPORTANT — Edge Ordering
---------------------------
-MACE-MP-0 builds its own neighbor list internally during forward pass.
-We do NOT assume our independently constructed neighbor list matches
-MACE's internal ordering. Instead:
+-------------------------
+MACE-MP-0 builds its own neighbor list internally during forward pass. The
+implementation does not assume that its array order equals ASE's array order.
+It compares canonical directed keys `(sender, receiver, unit_shift)` using
+`edge_index` and `unit_shifts`; the fixed-Si diagnostic found an exact 2,944-
+edge key-set match with no duplicates.
 
-  - We use our own neighbor list (built with ASE's primitive_neighbor_list)
-    with the SAME cutoff as MACE uses internally.
-  - The E1 perturbation measurement is done on OUR edge list.
-  - The force-error experiment does NOT manipulate MACE internals:
-    it provides full atomic positions to MACE and gets forces back.
-
-For the stale-cache force-error experiment (Section 10 of spec), we 
-simulate staleness by providing perturbed positions where some atoms
-are held at their reference-time positions. This approach is described
-in detail in docs/e1_stale_cache_definition.md.
+The repaired force-error path manipulates only MACE's first-layer edge message
+inside the interaction block. It does not move atoms or construct a mixed-time
+configuration.
 
 ALLEGRO STATUS: BLOCKED
 ------------------------

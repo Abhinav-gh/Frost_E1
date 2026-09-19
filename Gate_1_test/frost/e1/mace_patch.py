@@ -9,15 +9,17 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
     """Apply a Frost cache to layer-1 messages without changing coordinates."""
     if not state.get("active", False):
         return mji
+    mode = state.get("mode", 0)
+    if mode == 0:
+        return mji
     clean_mask = state.get("clean_mask")
     g_ref = state.get("g_ref")
     if clean_mask is None or clean_mask.shape != (mji.shape[0],):
         raise ValueError("frost_cache clean_mask does not match MACE edges")
     if g_ref is None or g_ref.shape != mji.shape:
         raise ValueError("frost_cache g_ref does not match mji")
-    mode = state.get("mode", 0)
-    if mode == 0:
-        return mji
+    clean_mask = clean_mask.to(device=mji.device, dtype=torch.bool)
+    g_ref = g_ref.to(device=mji.device, dtype=mji.dtype)
     if mode == 1:
         replacement = g_ref
     elif mode == 2:
@@ -28,6 +30,9 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
             raise ValueError("frost_cache J_ref must have shape [edges, features, 3]")
         if vectors is None or vectors_ref is None:
             raise ValueError("First-order cache requires current and reference vectors")
+        J_ref = J_ref.to(device=mji.device, dtype=mji.dtype)
+        vectors = vectors.to(device=mji.device, dtype=mji.dtype)
+        vectors_ref = vectors_ref.to(device=mji.device, dtype=mji.dtype)
         replacement = g_ref + torch.einsum("ea,eba->eb", vectors - vectors_ref, J_ref)
     else:
         raise ValueError(f"Unsupported Frost cache mode: {mode}")
@@ -92,6 +97,17 @@ def create_patched_forward(original_forward, frost_cache_state):
         mji = self.conv_tp(
             node_feats[edge_index[0]], edge_attrs, tp_weights
         )
+
+        if frost_cache_state.get("capture_local_inputs", False) and first_layer:
+            frost_cache_state["local_inputs"] = {
+                "node_feats": node_feats.detach(),
+                "node_attrs": node_attrs.detach(),
+                "edge_index": edge_index.detach(),
+                "edge_attrs": edge_attrs.detach(),
+                "edge_feats": edge_feats.detach(),
+                "cutoff": cutoff.detach() if cutoff is not None else None,
+                "mji": mji.detach(),
+            }
 
         # --- FROST INTERCEPTION ---
         if frost_cache_state.get("active", False) and first_layer:

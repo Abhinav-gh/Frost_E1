@@ -47,6 +47,8 @@ class EdgeCacheEntry:
     age: int = 0
     generation: int = 0
     valid: bool = True
+    state: str = "VALID"
+    refresh_count: int = 0
     g_ref: Optional[np.ndarray] = None
     J_ref: Optional[np.ndarray] = None
     lifetime_history: List[int] = field(default_factory=list)
@@ -61,7 +63,9 @@ class EdgeCacheEntry:
         self.ref_timestep = timestep
         self.age = 0
         self.valid = True
+        self.state = "VALID"
         self.generation += 1
+        self.refresh_count += 1
 
 
 class PerEdgeReferenceCache:
@@ -87,6 +91,7 @@ class PerEdgeReferenceCache:
         """
         self.tolerances = sorted(tolerances)
         self._entries: Dict[Tuple, EdgeCacheEntry] = {}
+        self._removed_keys = set()
         self._timestep: int = 0
         self._n_steps: int = 0
 
@@ -98,6 +103,7 @@ class PerEdgeReferenceCache:
         age=0 at initialization.
         """
         self._entries.clear()
+        self._removed_keys.clear()
         self._timestep = timestep
         for key, geom in edges.items():
             self._entries[key] = EdgeCacheEntry(
@@ -109,6 +115,7 @@ class PerEdgeReferenceCache:
                 age=0,
                 generation=0,
                 valid=True,
+                state="VALID",
             )
         self._n_steps = 0
 
@@ -123,12 +130,15 @@ class PerEdgeReferenceCache:
         self._timestep = timestep
         self._n_steps += 1
 
-        perturbations = compute_all_perturbations_batch(edges_current, self._entries_as_ref_dict())
+        reference_entries = self._entries_as_ref_dict()
+        perturbations = compute_all_perturbations_batch(edges_current, reference_entries)
 
         current_keys = set(edges_current.keys())
         old_keys = set(self._entries.keys())
         n_removed = len(old_keys - current_keys)
         n_new = len(current_keys - old_keys)
+        removed_keys = old_keys - current_keys
+        new_keys = current_keys - old_keys
 
         delta_r_vals = []
         delta_rhat_vals = []
@@ -142,6 +152,23 @@ class PerEdgeReferenceCache:
 
         dirty_counts = {}
         dirty_keys_by_eps = {eps: set() for eps in self.tolerances}
+        for key in new_keys:
+            if key not in self._entries:
+                geom = edges_current[key]
+                self._entries[key] = EdgeCacheEntry(
+                    edge_id=key,
+                    ref_r_ij=geom["r_ij"].copy(),
+                    ref_d_ij=geom["d_ij"],
+                    ref_rhat_ij=geom["rhat_ij"].copy(),
+                    ref_timestep=timestep,
+                    age=0,
+                    generation=0,
+                    valid=True,
+                    state="VALID",
+                )
+                self._entries[key].state = "NEW"
+
+        refresh_keys = set(new_keys)
         for eps in self.tolerances:
             n_dirty = 0
             for key, pert in perturbations.items():
@@ -151,17 +178,6 @@ class PerEdgeReferenceCache:
                 if is_new:
                     n_dirty += 1
                     dirty_keys_by_eps[eps].add(key)
-                    if key not in self._entries:
-                        self._entries[key] = EdgeCacheEntry(
-                            edge_id=key,
-                            ref_r_ij=geom["r_ij"].copy(),
-                            ref_d_ij=geom["d_ij"],
-                            ref_rhat_ij=geom["rhat_ij"].copy(),
-                            ref_timestep=timestep,
-                            age=0,
-                            generation=0,
-                            valid=True,
-                        )
                 else:
                     entry = self._entries[key]
                     dirty = is_dirty_zeroth_order(
@@ -174,16 +190,32 @@ class PerEdgeReferenceCache:
                     if dirty:
                         n_dirty += 1
                         dirty_keys_by_eps[eps].add(key)
-                        entry.refresh(geom["r_ij"], geom["d_ij"], geom["rhat_ij"], timestep)
+                        entry.state = "DIRTY"
+                        refresh_keys.add(key)
 
             dirty_counts[eps] = n_dirty
+
+        for key in refresh_keys:
+            geom = edges_current[key]
+            entry = self._entries[key]
+            if key in new_keys:
+                entry.ref_r_ij = geom["r_ij"].copy()
+                entry.ref_d_ij = geom["d_ij"]
+                entry.ref_rhat_ij = geom["rhat_ij"].copy()
+                entry.ref_timestep = timestep
+                entry.age = 0
+                entry.valid = True
+                entry.state = "VALID"
+            else:
+                entry.refresh(geom["r_ij"], geom["d_ij"], geom["rhat_ij"], timestep)
 
         for key in current_keys:
             if key in self._entries:
                 if self._entries[key].ref_timestep != timestep:
                     self._entries[key].age += 1
 
-        for key in old_keys - current_keys:
+        for key in removed_keys:
+            self._removed_keys.add(key)
             del self._entries[key]
 
         n_edges_current = len(current_keys)
@@ -197,10 +229,27 @@ class PerEdgeReferenceCache:
             "n_edges_current": n_edges_current,
             "n_edges_new": n_new,
             "n_edges_removed": n_removed,
+            "new_keys": set(new_keys),
+            "removed_keys": set(removed_keys),
             "perturbations": perturbations,
             "dirty_counts": dirty_counts,
             "dirty_fractions": dirty_fractions,
             "dirty_keys_by_eps": dirty_keys_by_eps,
+            "cache_hits": {
+                eps: n_edges_current - dirty_counts[eps]
+                for eps in self.tolerances
+            },
+            "cache_misses": {
+                eps: dirty_counts[eps]
+                for eps in self.tolerances
+            },
+            "refresh_counts": {
+                eps: len(dirty_keys_by_eps[eps])
+                for eps in self.tolerances
+            },
+            "generation_by_key": {
+                key: entry.generation for key, entry in self._entries.items()
+            },
             "valid_edges": set(self._entries.keys()),
             "mean_delta_r": float(np.mean(delta_r_arr)),
             "std_delta_r": float(np.std(delta_r_arr)),

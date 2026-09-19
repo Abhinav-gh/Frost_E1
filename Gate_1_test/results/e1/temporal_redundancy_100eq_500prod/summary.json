@@ -1,0 +1,238 @@
+{
+  "metadata": {
+    "n_atoms": 64,
+    "temperature_K": 300,
+    "n_equilibration_steps": 100,
+    "n_production_steps": 500,
+    "timestep_fs": 1.0,
+    "langevin_gamma": 0.01,
+    "seed": 42,
+    "eq_wall_time_s": 14.105781913967803,
+    "prod_wall_time_s": 374.91949063993525,
+    "ms_per_step": 749.8389812798705,
+    "mean_energy_eV": -339.2815043609457,
+    "std_energy_eV": 0.381245497126219,
+    "mean_temperature_K": 312.9464117135622,
+    "final_energy_eV": -339.5173254621642
+  },
+  "seed": 42,
+  "equilibration_steps": 100,
+  "production_steps": 500,
+  "sample_interval": 50,
+  "sampled_steps": [
+    50,
+    100,
+    150,
+    200,
+    250,
+    300,
+    350,
+    400,
+    450
+  ],
+  "force_comparison_mismatches": [
+    {
+      "step": 50,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2776,
+        2048
+      ],
+      "current_message_shape": [
+        2756,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 100,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2756,
+        2048
+      ],
+      "current_message_shape": [
+        2750,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 150,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2750,
+        2048
+      ],
+      "current_message_shape": [
+        2768,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 200,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2768,
+        2048
+      ],
+      "current_message_shape": [
+        2772,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 250,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2772,
+        2048
+      ],
+      "current_message_shape": [
+        2766,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 300,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2766,
+        2048
+      ],
+      "current_message_shape": [
+        2720,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 350,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2720,
+        2048
+      ],
+      "current_message_shape": [
+        2754,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 400,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2754,
+        2048
+      ],
+      "current_message_shape": [
+        2752,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    },
+    {
+      "step": 450,
+      "tolerance_A": "all",
+      "reference_message_shape": [
+        2752,
+        2048
+      ],
+      "current_message_shape": [
+        2760,
+        2048
+      ],
+      "reason": "dynamic MACE edge keys/order changed; reference reset"
+    }
+  ],
+  "production_wall_seconds": 389.0273758759722,
+  "sampled_dense_jacobian_seconds": 45.9198033423163,
+  "tolerances_A": [
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.02,
+    0.05
+  ],
+  "summaries": [
+    {
+      "tolerance_A": 0.001,
+      "mean_phi": 0.9955735208056276,
+      "median_phi": 0.9978245105148659,
+      "p90_phi": 0.9992743105950653,
+      "p95_phi": 0.9992832821300562,
+      "max_phi": 1.0,
+      "mean_clean_fraction": 0.004426479194372471,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    },
+    {
+      "tolerance_A": 0.002,
+      "mean_phi": 0.9824863193226858,
+      "median_phi": 0.9848265895953757,
+      "p90_phi": 0.9898418207441998,
+      "p95_phi": 0.9912920428867177,
+      "max_phi": 0.9942112879884226,
+      "mean_clean_fraction": 0.017513680677314212,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    },
+    {
+      "tolerance_A": 0.005,
+      "mean_phi": 0.8384674859459661,
+      "median_phi": 0.8462376706317538,
+      "p90_phi": 0.8718488052136133,
+      "p95_phi": 0.8808782559182247,
+      "max_phi": 0.9075812274368231,
+      "mean_clean_fraction": 0.1615325140540339,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    },
+    {
+      "tolerance_A": 0.01,
+      "mean_phi": 0.5044117939610624,
+      "median_phi": 0.5108774989062026,
+      "p90_phi": 0.5520858782391141,
+      "p95_phi": 0.5620870603848706,
+      "max_phi": 0.6459985580389329,
+      "mean_clean_fraction": 0.4955882060389376,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    },
+    {
+      "tolerance_A": 0.02,
+      "mean_phi": 0.2841136923965341,
+      "median_phi": 0.28816053927163504,
+      "p90_phi": 0.3122362508701981,
+      "p95_phi": 0.3203999059370331,
+      "max_phi": 0.4001441961067051,
+      "mean_clean_fraction": 0.7158863076034658,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    },
+    {
+      "tolerance_A": 0.05,
+      "mean_phi": 0.12047311579425403,
+      "median_phi": 0.12149521117501035,
+      "p90_phi": 0.138205499276411,
+      "p95_phi": 0.14266379497555434,
+      "max_phi": 0.15758896151053015,
+      "mean_clean_fraction": 0.879526884205746,
+      "fraction_steps_with_edge_churn": 0.972,
+      "mean_sampled_force_rms_error": null,
+      "n_force_samples": 0
+    }
+  ],
+  "theta_status": "not measured; clean fraction is only a geometric reuse upper bound",
+  "force_status": "sampled dense snapshots refreshed at sample cadence; not a production per-edge refresh engine"
+}

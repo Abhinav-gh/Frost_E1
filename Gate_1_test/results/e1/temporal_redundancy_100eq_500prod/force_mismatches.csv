@@ -1,0 +1,10 @@
+step,tolerance_A,reference_message_shape,current_message_shape,reason
+50,all,"(2776, 2048)","(2756, 2048)",dynamic MACE edge keys/order changed; reference reset
+100,all,"(2756, 2048)","(2750, 2048)",dynamic MACE edge keys/order changed; reference reset
+150,all,"(2750, 2048)","(2768, 2048)",dynamic MACE edge keys/order changed; reference reset
+200,all,"(2768, 2048)","(2772, 2048)",dynamic MACE edge keys/order changed; reference reset
+250,all,"(2772, 2048)","(2766, 2048)",dynamic MACE edge keys/order changed; reference reset
+300,all,"(2766, 2048)","(2720, 2048)",dynamic MACE edge keys/order changed; reference reset
+350,all,"(2720, 2048)","(2754, 2048)",dynamic MACE edge keys/order changed; reference reset
+400,all,"(2754, 2048)","(2752, 2048)",dynamic MACE edge keys/order changed; reference reset
+450,all,"(2752, 2048)","(2760, 2048)",dynamic MACE edge keys/order changed; reference reset

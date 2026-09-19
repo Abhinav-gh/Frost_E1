@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from typing import Tuple
+from typing import Dict, Iterable, Tuple
 
 
 def minimum_image_displacement(
@@ -153,6 +153,76 @@ def build_edge_geometry_from_ase(
         }
 
     return edges
+
+
+def canonical_edge_key(atom_i: int, atom_j: int, periodic_offset: Iterable[int]) -> tuple:
+    """Return the directed physical edge identity used by Frost."""
+    return (int(atom_i), int(atom_j), tuple(int(value) for value in periodic_offset))
+
+
+def mace_edge_keys(
+    edge_index: torch.Tensor,
+    unit_shifts: torch.Tensor,
+    ptr: torch.Tensor | None = None,
+) -> list[tuple]:
+    """Convert MACE's directed edge tensors into canonical physical keys.
+
+    MACE stores sender/receiver indices in ``edge_index`` and fractional cell
+    offsets in ``unit_shifts``. The offsets are converted to integer tuples;
+    Cartesian ``shifts`` are derived later by MACE from these values and the
+    cell. ``ptr`` is accepted for batched graphs so keys use global atom IDs.
+    """
+    if edge_index.ndim != 2 or edge_index.shape[0] != 2:
+        raise ValueError("edge_index must have shape [2, n_edges]")
+    if unit_shifts.ndim != 2 or unit_shifts.shape[1] != 3:
+        raise ValueError("unit_shifts must have shape [n_edges, 3]")
+    if edge_index.shape[1] != unit_shifts.shape[0]:
+        raise ValueError("edge_index and unit_shifts must contain the same edges")
+
+    offsets = torch.round(unit_shifts).to(torch.int64).cpu().tolist()
+    senders = edge_index[0].to(torch.int64).cpu().tolist()
+    receivers = edge_index[1].to(torch.int64).cpu().tolist()
+    graph_offsets = [0] * len(senders)
+    if ptr is not None:
+        ptr_values = ptr.to(torch.int64).cpu().tolist()
+        graph_for_edge = []
+        for graph_index in range(len(ptr_values) - 1):
+            graph_for_edge.extend([graph_index] * sum(
+                1 for sender in senders
+                if ptr_values[graph_index] <= sender < ptr_values[graph_index + 1]
+            ))
+        if len(graph_for_edge) != len(senders):
+            raise ValueError("Cannot infer graph membership for MACE edges")
+        graph_offsets = [ptr_values[index] for index in graph_for_edge]
+
+    return [
+        canonical_edge_key(sender + offset, receiver + offset, shift)
+        for sender, receiver, shift, offset in zip(senders, receivers, offsets, graph_offsets)
+    ]
+
+
+def compare_edge_key_sets(ase_keys: Iterable[tuple], mace_keys: Iterable[tuple]) -> dict:
+    """Report missing, duplicate, and mismatched physical edge identities."""
+    ase_list = list(ase_keys)
+    mace_list = list(mace_keys)
+    ase_set = set(ase_list)
+    mace_set = set(mace_list)
+    return {
+        "ase_count": len(ase_list),
+        "mace_count": len(mace_list),
+        "ase_duplicates": sorted(key for key, count in _key_counts(ase_list).items() if count > 1),
+        "mace_duplicates": sorted(key for key, count in _key_counts(mace_list).items() if count > 1),
+        "missing_from_mace": sorted(ase_set - mace_set),
+        "missing_from_ase": sorted(mace_set - ase_set),
+        "matched": ase_set == mace_set and len(ase_list) == len(mace_list),
+    }
+
+
+def _key_counts(keys: Iterable[tuple]) -> Dict[tuple, int]:
+    counts: Dict[tuple, int] = {}
+    for key in keys:
+        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def delta_r(

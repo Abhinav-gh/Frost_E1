@@ -28,15 +28,33 @@ This is the stage-1 version of the Frost-style cache state and is intentionally 
 
 ## 3. Edge identity
 
-The edge key remains the current neighbor-list identifier:
+The edge key is a canonical physical identity, not a neighbor-list array index:
 
 - `(i, j, shift)`
 
 The shift is necessary because the same pair of atoms may connect via different periodic images. This matters for PBC correctness and for matching the actual MACE neighbor list.
 
+For the current MACE version, `edge_index[0]` is the sender atom and
+`edge_index[1]` is the receiver atom. MACE forms the directed vector as
+`positions[receiver] - positions[sender] + shifts`, where `unit_shifts` is the
+integer fractional cell offset and `shifts` is its Cartesian form. The mapping
+utility in `frost/e1/geometry.py` canonicalizes both ASE and MACE as
+`(sender, receiver, unit_shift)`.
+
+On the fixed diamond-Si configuration used for low-level validation, ASE and
+MACE each produced 2,944 directed edges. Their arrays were ordered differently,
+but the canonical key sets had no duplicates, no missing keys, and matched
+exactly.
+
 ## 4. Refresh policy
 
 The current trajectory cache is still a geometric E1 simulation layer rather than a finalized production Frost runtime. It evaluates clean vs dirty edges using the existing tolerance predicate and refreshes dirty edges per pass. The semantics are intentionally conservative and match the current E1 harness level.
+
+The prototype computes all tolerance dirty masks from one pre-step reference
+snapshot before applying any refresh. This prevents a later tolerance from
+depending on an earlier tolerance's refresh. Reference geometry is still
+shared by this prototype; fully independent per-tolerance cached message values
+remain future work.
 
 ## 5. Handling new and removed edges
 
@@ -75,3 +93,9 @@ The current trajectory hook still does not yet constitute a fully production-qua
 ## 9. Status
 
 The underlying mechanism is now valid at the edge-interception level and is validated by the seven-case integrity matrix. The remaining work is trajectory integration and full E1 production execution, not another redesign of the mathematical repair.
+
+The staged low-level validation also includes explicit NEW/VALID/DIRTY/REMOVED
+lifecycle reporting, cache hit/miss counts, a no-Jacobian layer-1 message
+capture path, ASE calculator-cache invalidation before intercepted evaluations,
+and cache tensor device/dtype normalization for CUDA MACE execution. The mode-0
+exact-control path passed on one fixed configuration and a three-step Si canary.

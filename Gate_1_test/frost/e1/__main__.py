@@ -188,10 +188,12 @@ def run_experiment(config: dict, is_pilot: bool = False):
                             res = {}
                             for eps in tolerances:
                                 dirty_keys = stats["dirty_keys_by_eps"][eps]
+                                # The current edge ordering is the same as MACE's layer-1 edge list.
+                                # For the pilot path, this keeps the mask valid while still enabling
+                                # a conservative stale-cache evaluation.
                                 clean_mask = torch.ones(current_layer1["g_ref"].shape[0], dtype=torch.bool)
                                 if dirty_keys:
-                                    dirty_idx = list(range(len(current_layer1["g_ref"])))
-                                    clean_mask[dirty_idx] = False
+                                    clean_mask[:] = False
                                 _, cached_forces = compute_cached_forces(
                                     current_atoms,
                                     model,
