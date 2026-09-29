@@ -1,0 +1,101 @@
+{
+  "stage": "A",
+  "jacobian_enabled": false,
+  "sampled_steps": [],
+  "sampled_dense_jacobian_seconds": 0.0,
+  "metadata": {
+    "n_atoms": 64,
+    "temperature_K": 300,
+    "n_equilibration_steps": 100,
+    "n_production_steps": 1000,
+    "timestep_fs": 1.0,
+    "langevin_gamma": 0.01,
+    "seed": 42,
+    "eq_wall_time_s": 61.395358841000416,
+    "prod_wall_time_s": 1205.3597719069985,
+    "ms_per_step": 1205.3597719069985,
+    "mean_energy_eV": -339.3041227169151,
+    "std_energy_eV": 0.30981645561695204,
+    "mean_temperature_K": 309.8565286262619,
+    "final_energy_eV": -339.27363647305816
+  },
+  "seed": 42,
+  "equilibration_steps": 100,
+  "production_steps": 1000,
+  "tolerances_A": [
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.02,
+    0.05
+  ],
+  "model": "mace-mp-0",
+  "system": "diamond_si",
+  "production_wall_seconds": 1266.7578854290005,
+  "summaries": [
+    {
+      "tolerance_A": 0.001,
+      "mean_phi": 0.9965187320695659,
+      "median_phi": 0.9978173878523224,
+      "p90_phi": 0.9992737835875091,
+      "p95_phi": 0.9992795648394238,
+      "max_phi": 1.0,
+      "mean_clean_fraction": 0.003481267930434132,
+      "fraction_steps_with_edge_churn": 0.974
+    },
+    {
+      "tolerance_A": 0.002,
+      "mean_phi": 0.983368880788712,
+      "median_phi": 0.9846994515213223,
+      "p90_phi": 0.9898263202783266,
+      "p95_phi": 0.9913232104121475,
+      "max_phi": 0.9956803455723542,
+      "mean_clean_fraction": 0.01663111921128806,
+      "fraction_steps_with_edge_churn": 0.974
+    },
+    {
+      "tolerance_A": 0.005,
+      "mean_phi": 0.8395660209616117,
+      "median_phi": 0.8420093720513555,
+      "p90_phi": 0.871467010161729,
+      "p95_phi": 0.8796887096807852,
+      "max_phi": 0.9075812274368231,
+      "mean_clean_fraction": 0.16043397903838838,
+      "fraction_steps_with_edge_churn": 0.974
+    },
+    {
+      "tolerance_A": 0.01,
+      "mean_phi": 0.5040382729701448,
+      "median_phi": 0.5057887605057416,
+      "p90_phi": 0.5474362777968272,
+      "p95_phi": 0.5571288252601573,
+      "max_phi": 0.6459985580389329,
+      "mean_clean_fraction": 0.4959617270298552,
+      "fraction_steps_with_edge_churn": 0.974
+    },
+    {
+      "tolerance_A": 0.02,
+      "mean_phi": 0.2843487090112763,
+      "median_phi": 0.2855061908230153,
+      "p90_phi": 0.3105617493005743,
+      "p95_phi": 0.3189101878418739,
+      "max_phi": 0.4001441961067051,
+      "mean_clean_fraction": 0.7156512909887237,
+      "fraction_steps_with_edge_churn": 0.974
+    },
+    {
+      "tolerance_A": 0.05,
+      "mean_phi": 0.12061762912880188,
+      "median_phi": 0.12119013062409288,
+      "p90_phi": 0.1365988247846501,
+      "p95_phi": 0.14123561172173446,
+      "max_phi": 0.15758896151053015,
+      "mean_clean_fraction": 0.8793823708711981,
+      "fraction_steps_with_edge_churn": 0.974
+    }
+  ],
+  "theta_status": "not measured; clean fraction is a geometric reuse upper bound only",
+  "force_status": "Stage A does not compute exact-vs-Frost force errors",
+  "trajectory_path": "results/e1/temporal_redundancy_100eq_1000prod/trajectory.traj"
+}

@@ -1,0 +1,321 @@
+{
+  "metadata": {
+    "stage": "E2",
+    "device": "cuda",
+    "dtype": "float64",
+    "steps": [
+      0,
+      40
+    ],
+    "warmup": 2,
+    "repeats": 3,
+    "dense_jacobian_enabled": false,
+    "stage_b_runtime_used": false,
+    "n_edges_expected": 2944,
+    "message_features_expected": 2048,
+    "call_graph": {
+      "ASE/MACE batch and neighbor preparation": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/calculators/mace.py:527",
+      "Frost edge geometry": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:93",
+      "MACE model forward/readout": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/modules/models.py:455",
+      "MACE first interaction/Frost interception": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:65",
+      "layer-1 tensor product and scatter timing": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:65",
+      "Frost affine message substitution": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:8",
+      "Frost JVP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:283",
+      "Frost VJP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:295",
+      "dirty predicate": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:264",
+      "cache state machine": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/reference_cache.py:71"
+    },
+    "theta": 0.7857142885698422,
+    "theta_definition": "median layer-1 TP / (median layer-1 TP + median layer-1 aggregation)"
+  },
+  "call_graph": {
+    "ASE/MACE batch and neighbor preparation": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/calculators/mace.py:527",
+    "Frost edge geometry": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:93",
+    "MACE model forward/readout": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/modules/models.py:455",
+    "MACE first interaction/Frost interception": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:65",
+    "layer-1 tensor product and scatter timing": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:65",
+    "Frost affine message substitution": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/mace_patch.py:8",
+    "Frost JVP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:283",
+    "Frost VJP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:295",
+    "dirty predicate": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:264",
+    "cache state machine": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/reference_cache.py:71"
+  },
+  "frames": [
+    {
+      "step": 0,
+      "n_edges": 2776,
+      "measurements": {
+        "T_exact_total": {
+          "n": 3,
+          "median_ms": 99.92208099365234,
+          "iqr_ms": 9.745136260986328,
+          "p10_ms": 96.83766326904296,
+          "p90_ms": 112.4298812866211,
+          "min_ms": 96.06655883789062,
+          "max_ms": 115.55683135986328
+        },
+        "T_layer1_TP": {
+          "n": 3,
+          "median_ms": 0.29388800263404846,
+          "iqr_ms": 0.04710400104522705,
+          "p10_ms": 0.29388800263404846,
+          "p90_ms": 0.36925440430641177,
+          "min_ms": 0.29388800263404846,
+          "max_ms": 0.38809600472450256
+        },
+        "T_layer1_aggregation": {
+          "n": 3,
+          "median_ms": 0.08089599758386612,
+          "iqr_ms": 0.002048000693321228,
+          "p10_ms": 0.07843839675188065,
+          "p90_ms": 0.0817151978611946,
+          "min_ms": 0.07782399654388428,
+          "max_ms": 0.08191999793052673
+        },
+        "T_rest_forward": {
+          "n": 3,
+          "median_ms": 38.23923084139824,
+          "iqr_ms": 0.3425283469259739,
+          "p10_ms": 38.12208513021469,
+          "p90_ms": 38.67013048529625,
+          "min_ms": 38.092798702418804,
+          "max_ms": 38.77785539627075
+        },
+        "T_backward_force": {
+          "n": 3,
+          "median_ms": 47.303680419921875,
+          "iqr_ms": 0.8335361480712891,
+          "p10_ms": 46.282955932617185,
+          "p90_ms": 47.61661376953125,
+          "min_ms": 46.027774810791016,
+          "max_ms": 47.694847106933594
+        },
+        "T_edge_geometry": {
+          "n": 3,
+          "median_ms": 129.26865695044398,
+          "iqr_ms": 4.815975029487163,
+          "p10_ms": 128.79373617470264,
+          "p90_ms": 136.4992962218821,
+          "min_ms": 128.6750059807673,
+          "max_ms": 138.30695603974164
+        },
+        "T_total_step_wall": {
+          "n": 3,
+          "median_ms": 373.1158359441906,
+          "iqr_ms": 14.167023473419249,
+          "p10_ms": 370.59752722270787,
+          "p90_ms": 393.26476478017867,
+          "min_ms": 369.9679500423372,
+          "max_ms": 398.3019969891757
+        }
+      }
+    },
+    {
+      "step": 40,
+      "n_edges": 2740,
+      "measurements": {
+        "T_exact_total": {
+          "n": 3,
+          "median_ms": 96.23046112060547,
+          "iqr_ms": 0.4569892883300781,
+          "p10_ms": 96.00308685302734,
+          "p90_ms": 96.73426971435546,
+          "min_ms": 95.94624328613281,
+          "max_ms": 96.86022186279297
+        },
+        "T_layer1_TP": {
+          "n": 3,
+          "median_ms": 0.29183998703956604,
+          "iqr_ms": 0.060415998101234436,
+          "p10_ms": 0.29020159840583803,
+          "p90_ms": 0.3868671953678131,
+          "min_ms": 0.289792001247406,
+          "max_ms": 0.4106239974498749
+        },
+        "T_layer1_aggregation": {
+          "n": 3,
+          "median_ms": 0.07884799689054489,
+          "iqr_ms": 0.002560000866651535,
+          "p10_ms": 0.0780287966132164,
+          "p90_ms": 0.08212479799985886,
+          "min_ms": 0.07782399654388428,
+          "max_ms": 0.08294399827718735
+        },
+        "T_rest_forward": {
+          "n": 3,
+          "median_ms": 38.25868747383356,
+          "iqr_ms": 0.11519920453429222,
+          "p10_ms": 38.1292555347085,
+          "p90_ms": 38.31357426196337,
+          "min_ms": 38.096897549927235,
+          "max_ms": 38.32729595899582
+        },
+        "T_backward_force": {
+          "n": 3,
+          "median_ms": 46.37798309326172,
+          "iqr_ms": 0.20377731323242188,
+          "p10_ms": 46.06422882080078,
+          "p90_ms": 46.390272521972655,
+          "min_ms": 45.98579025268555,
+          "max_ms": 46.39334487915039
+        },
+        "T_edge_geometry": {
+          "n": 3,
+          "median_ms": 128.4990069689229,
+          "iqr_ms": 0.5502094281837344,
+          "p10_ms": 128.1273390399292,
+          "p90_ms": 129.0076741250232,
+          "min_ms": 128.03442205768079,
+          "max_ms": 129.13484091404825
+        },
+        "T_total_step_wall": {
+          "n": 3,
+          "median_ms": 368.2020839769393,
+          "iqr_ms": 0.7527489797212183,
+          "p10_ms": 367.3963952343911,
+          "p90_ms": 368.60079360194504,
+          "min_ms": 367.19497304875404,
+          "max_ms": 368.7004710081965
+        }
+      }
+    }
+  ],
+  "microbenchmarks": [
+    {
+      "step": 0,
+      "measurements": {
+        "JVP_16_edges": {
+          "n": 3,
+          "median_ms": 243.1743927001953,
+          "iqr_ms": 2.0044784545898438,
+          "p10_ms": 242.3068634033203,
+          "p90_ms": 245.51402893066407,
+          "min_ms": 242.08998107910156,
+          "max_ms": 246.09893798828125
+        },
+        "VJP_16_edges": {
+          "n": 3,
+          "median_ms": 137.74949645996094,
+          "iqr_ms": 2.024444580078125,
+          "p10_ms": 137.13592224121095,
+          "p90_ms": 140.37503356933593,
+          "min_ms": 136.98252868652344,
+          "max_ms": 141.0314178466797
+        },
+        "affine_cache_update": {
+          "n": 3,
+          "median_ms": 0.22630399465560913,
+          "iqr_ms": 0.002048000693321228,
+          "p10_ms": 0.22466559410095216,
+          "p90_ms": 0.2279423952102661,
+          "min_ms": 0.2242559939622879,
+          "max_ms": 0.22835199534893036
+        },
+        "predicate": {
+          "n": 3,
+          "median_ms": 18.703359603881836,
+          "iqr_ms": 0.03123188018798828,
+          "p10_ms": 18.699264144897462,
+          "p90_ms": 18.749235153198242,
+          "min_ms": 18.698240280151367,
+          "max_ms": 18.760704040527344
+        },
+        "compaction": {
+          "n": 3,
+          "median_ms": 0.13926400244235992,
+          "iqr_ms": 0.0015360042452812195,
+          "p10_ms": 0.13680639564990998,
+          "p90_ms": 0.13926400244235992,
+          "min_ms": 0.13619199395179749,
+          "max_ms": 0.13926400244235992
+        },
+        "cache_reconstruction": {
+          "n": 3,
+          "median_ms": 0.23244799673557281,
+          "iqr_ms": 0.002048000693321228,
+          "p10_ms": 0.2316288024187088,
+          "p90_ms": 0.23490560352802276,
+          "min_ms": 0.2314240038394928,
+          "max_ms": 0.23552000522613525
+        },
+        "dirty_TP": {
+          "n": 3,
+          "median_ms": 0.796671986579895,
+          "iqr_ms": 0.012800008058547974,
+          "p10_ms": 0.7835647821426391,
+          "p90_ms": 0.8040447950363159,
+          "min_ms": 0.7802879810333252,
+          "max_ms": 0.8058879971504211
+        }
+      }
+    },
+    {
+      "step": 40,
+      "measurements": {
+        "JVP_16_edges": {
+          "n": 3,
+          "median_ms": 247.7619171142578,
+          "iqr_ms": 1.6353302001953125,
+          "p10_ms": 245.3387237548828,
+          "p90_ms": 247.95525207519532,
+          "min_ms": 244.73292541503906,
+          "max_ms": 248.0035858154297
+        },
+        "VJP_16_edges": {
+          "n": 3,
+          "median_ms": 136.60057067871094,
+          "iqr_ms": 2.2149124145507812,
+          "p10_ms": 136.16475524902344,
+          "p90_ms": 139.7086151123047,
+          "min_ms": 136.05580139160156,
+          "max_ms": 140.48562622070312
+        },
+        "affine_cache_update": {
+          "n": 3,
+          "median_ms": 0.22323200106620789,
+          "iqr_ms": 0.0015360042452812195,
+          "p10_ms": 0.22241279482841492,
+          "p90_ms": 0.22487040162086486,
+          "min_ms": 0.22220799326896667,
+          "max_ms": 0.2252800017595291
+        },
+        "predicate": {
+          "n": 3,
+          "median_ms": 18.520063400268555,
+          "iqr_ms": 0.06758403778076172,
+          "p10_ms": 18.45616569519043,
+          "p90_ms": 18.56430015563965,
+          "min_ms": 18.4401912689209,
+          "max_ms": 18.575359344482422
+        },
+        "compaction": {
+          "n": 3,
+          "median_ms": 0.13926400244235992,
+          "iqr_ms": 0.001024000346660614,
+          "p10_ms": 0.13762560188770295,
+          "p90_ms": 0.13926400244235992,
+          "min_ms": 0.1372160017490387,
+          "max_ms": 0.13926400244235992
+        },
+        "cache_reconstruction": {
+          "n": 3,
+          "median_ms": 0.23244799673557281,
+          "iqr_ms": 0.01536000519990921,
+          "p10_ms": 0.23244799673557281,
+          "p90_ms": 0.25702400505542755,
+          "min_ms": 0.23244799673557281,
+          "max_ms": 0.26316800713539124
+        },
+        "dirty_TP": {
+          "n": 3,
+          "median_ms": 0.8017920255661011,
+          "iqr_ms": 0.05478399991989136,
+          "p10_ms": 0.7878656148910522,
+          "p90_ms": 0.8755200147628784,
+          "min_ms": 0.78438401222229,
+          "max_ms": 0.8939520120620728
+        }
+      }
+    }
+  ]
+}

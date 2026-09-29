@@ -1,0 +1,294 @@
+{
+  "stage": "B",
+  "input_csv": "results/e1/temporal_redundancy_100eq_1000prod/per_timestep.csv",
+  "trajectory_path": "results/e1/temporal_redundancy_100eq_1000prod/trajectory.traj",
+  "selected_steps": [
+    12,
+    40,
+    130,
+    320,
+    540,
+    770
+  ],
+  "selected_tolerances_A": [
+    0.001,
+    0.005,
+    0.01,
+    0.02,
+    0.05
+  ],
+  "n_selected_rows": 30,
+  "selected_rows": [
+    {
+      "step": 12,
+      "tolerance_A": 0.001,
+      "phi": 0.998551774076756,
+      "n_edges": "2762",
+      "n_clean": "4",
+      "n_dirty": "2758",
+      "clean_fraction": "0.0014482259232440065"
+    },
+    {
+      "step": 12,
+      "tolerance_A": 0.005,
+      "phi": 0.8095582910934106,
+      "n_edges": "2762",
+      "n_clean": "526",
+      "n_dirty": "2236",
+      "clean_fraction": "0.1904417089065894"
+    },
+    {
+      "step": 12,
+      "tolerance_A": 0.01,
+      "phi": 0.5648081100651702,
+      "n_edges": "2762",
+      "n_clean": "1202",
+      "n_dirty": "1560",
+      "clean_fraction": "0.4351918899348298"
+    },
+    {
+      "step": 12,
+      "tolerance_A": 0.02,
+      "phi": 0.33454018826937004,
+      "n_edges": "2762",
+      "n_clean": "1838",
+      "n_dirty": "924",
+      "clean_fraction": "0.66545981173063"
+    },
+    {
+      "step": 12,
+      "tolerance_A": 0.05,
+      "phi": 0.11078928312816799,
+      "n_edges": "2762",
+      "n_clean": "2456",
+      "n_dirty": "306",
+      "clean_fraction": "0.889210716871832"
+    },
+    {
+      "step": 40,
+      "tolerance_A": 0.001,
+      "phi": 0.9948905109489051,
+      "n_edges": "2740",
+      "n_clean": "14",
+      "n_dirty": "2726",
+      "clean_fraction": "0.005109489051094873"
+    },
+    {
+      "step": 40,
+      "tolerance_A": 0.005,
+      "phi": 0.791970802919708,
+      "n_edges": "2740",
+      "n_clean": "570",
+      "n_dirty": "2170",
+      "clean_fraction": "0.208029197080292"
+    },
+    {
+      "step": 40,
+      "tolerance_A": 0.01,
+      "phi": 0.4313868613138686,
+      "n_edges": "2740",
+      "n_clean": "1558",
+      "n_dirty": "1182",
+      "clean_fraction": "0.5686131386861314"
+    },
+    {
+      "step": 40,
+      "tolerance_A": 0.02,
+      "phi": 0.23868613138686132,
+      "n_edges": "2740",
+      "n_clean": "2086",
+      "n_dirty": "654",
+      "clean_fraction": "0.7613138686131387"
+    },
+    {
+      "step": 40,
+      "tolerance_A": 0.05,
+      "phi": 0.10802919708029197,
+      "n_edges": "2740",
+      "n_clean": "2444",
+      "n_dirty": "296",
+      "clean_fraction": "0.891970802919708"
+    },
+    {
+      "step": 130,
+      "tolerance_A": 0.001,
+      "phi": 0.9985486211901307,
+      "n_edges": "2756",
+      "n_clean": "4",
+      "n_dirty": "2752",
+      "clean_fraction": "0.0014513788098693414"
+    },
+    {
+      "step": 130,
+      "tolerance_A": 0.005,
+      "phi": 0.8490566037735849,
+      "n_edges": "2756",
+      "n_clean": "416",
+      "n_dirty": "2340",
+      "clean_fraction": "0.15094339622641506"
+    },
+    {
+      "step": 130,
+      "tolerance_A": 0.01,
+      "phi": 0.4862119013062409,
+      "n_edges": "2756",
+      "n_clean": "1416",
+      "n_dirty": "1340",
+      "clean_fraction": "0.5137880986937591"
+    },
+    {
+      "step": 130,
+      "tolerance_A": 0.02,
+      "phi": 0.295355587808418,
+      "n_edges": "2756",
+      "n_clean": "1942",
+      "n_dirty": "814",
+      "clean_fraction": "0.704644412191582"
+    },
+    {
+      "step": 130,
+      "tolerance_A": 0.05,
+      "phi": 0.11175616835994194,
+      "n_edges": "2756",
+      "n_clean": "2448",
+      "n_dirty": "308",
+      "clean_fraction": "0.888243831640058"
+    },
+    {
+      "step": 320,
+      "tolerance_A": 0.001,
+      "phi": 0.9985326485693323,
+      "n_edges": "2726",
+      "n_clean": "4",
+      "n_dirty": "2722",
+      "clean_fraction": "0.0014673514306676738"
+    },
+    {
+      "step": 320,
+      "tolerance_A": 0.005,
+      "phi": 0.8473954512105649,
+      "n_edges": "2726",
+      "n_clean": "416",
+      "n_dirty": "2310",
+      "clean_fraction": "0.15260454878943508"
+    },
+    {
+      "step": 320,
+      "tolerance_A": 0.01,
+      "phi": 0.491562729273661,
+      "n_edges": "2726",
+      "n_clean": "1386",
+      "n_dirty": "1340",
+      "clean_fraction": "0.5084372707263389"
+    },
+    {
+      "step": 320,
+      "tolerance_A": 0.02,
+      "phi": 0.28980190755685986,
+      "n_edges": "2726",
+      "n_clean": "1936",
+      "n_dirty": "790",
+      "clean_fraction": "0.7101980924431401"
+    },
+    {
+      "step": 320,
+      "tolerance_A": 0.05,
+      "phi": 0.11665443873807776,
+      "n_edges": "2726",
+      "n_clean": "2408",
+      "n_dirty": "318",
+      "clean_fraction": "0.8833455612619222"
+    },
+    {
+      "step": 540,
+      "tolerance_A": 0.001,
+      "phi": 0.9985496736765772,
+      "n_edges": "2758",
+      "n_clean": "4",
+      "n_dirty": "2754",
+      "clean_fraction": "0.0014503263234227903"
+    },
+    {
+      "step": 540,
+      "tolerance_A": 0.005,
+      "phi": 0.8114575779550399,
+      "n_edges": "2758",
+      "n_clean": "520",
+      "n_dirty": "2238",
+      "clean_fraction": "0.18854242204496008"
+    },
+    {
+      "step": 540,
+      "tolerance_A": 0.01,
+      "phi": 0.47643219724437996,
+      "n_edges": "2758",
+      "n_clean": "1444",
+      "n_dirty": "1314",
+      "clean_fraction": "0.5235678027556201"
+    },
+    {
+      "step": 540,
+      "tolerance_A": 0.02,
+      "phi": 0.2668600435097897,
+      "n_edges": "2758",
+      "n_clean": "2022",
+      "n_dirty": "736",
+      "clean_fraction": "0.7331399564902104"
+    },
+    {
+      "step": 540,
+      "tolerance_A": 0.05,
+      "phi": 0.12690355329949238,
+      "n_edges": "2758",
+      "n_clean": "2408",
+      "n_dirty": "350",
+      "clean_fraction": "0.8730964467005076"
+    },
+    {
+      "step": 770,
+      "tolerance_A": 0.001,
+      "phi": 0.9955882352941177,
+      "n_edges": "2720",
+      "n_clean": "12",
+      "n_dirty": "2708",
+      "clean_fraction": "0.004411764705882337"
+    },
+    {
+      "step": 770,
+      "tolerance_A": 0.005,
+      "phi": 0.8213235294117647,
+      "n_edges": "2720",
+      "n_clean": "486",
+      "n_dirty": "2234",
+      "clean_fraction": "0.17867647058823533"
+    },
+    {
+      "step": 770,
+      "tolerance_A": 0.01,
+      "phi": 0.47794117647058826,
+      "n_edges": "2720",
+      "n_clean": "1420",
+      "n_dirty": "1300",
+      "clean_fraction": "0.5220588235294117"
+    },
+    {
+      "step": 770,
+      "tolerance_A": 0.02,
+      "phi": 0.27647058823529413,
+      "n_edges": "2720",
+      "n_clean": "1968",
+      "n_dirty": "752",
+      "clean_fraction": "0.7235294117647059"
+    },
+    {
+      "step": 770,
+      "tolerance_A": 0.05,
+      "phi": 0.1161764705882353,
+      "n_edges": "2720",
+      "n_clean": "2404",
+      "n_dirty": "316",
+      "clean_fraction": "0.8838235294117647"
+    }
+  ],
+  "notes": "Stage B is intentionally sparse: dense J_ref/exact MACE/first-order Frost is applied only for the selected Stage-A snapshots and their required reference states."
+}

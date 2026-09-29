@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "n_atoms": 64,
+    "temperature_K": 300,
+    "n_equilibration_steps": 1,
+    "n_production_steps": 5,
+    "timestep_fs": 1.0,
+    "langevin_gamma": 0.01,
+    "seed": 42,
+    "eq_wall_time_s": 1.8300794050010154,
+    "prod_wall_time_s": 768.8876674599996,
+    "ms_per_step": 153777.53349199993,
+    "mean_energy_eV": -341.7109324926592,
+    "std_energy_eV": 0.07446696559984793,
+    "mean_temperature_K": 250.38241625936044,
+    "final_energy_eV": -341.594500806363
+  },
+  "seed": 42,
+  "equilibration_steps": 1,
+  "production_steps": 5,
+  "sample_interval": 1,
+  "sampled_steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "force_comparison_mismatches": [],
+  "production_wall_seconds": 770.719981495,
+  "sampled_dense_jacobian_seconds": 738.7574747199997,
+  "tolerances_A": [
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.02,
+    0.05
+  ],
+  "summaries": [
+    {
+      "tolerance_A": 0.001,
+      "mean_phi": 0.7971467391304348,
+      "median_phi": 0.9966032608695652,
+      "p90_phi": 0.9974184782608696,
+      "p95_phi": 0.9976902173913044,
+      "max_phi": 0.9979619565217391,
+      "mean_clean_fraction": 0.20285326086956523,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 2.5983460343162415e-05,
+      "n_force_samples": 4
+    },
+    {
+      "tolerance_A": 0.002,
+      "mean_phi": 0.7822010869565217,
+      "median_phi": 0.9728260869565217,
+      "p90_phi": 0.9877717391304348,
+      "p95_phi": 0.9891304347826086,
+      "max_phi": 0.9904891304347826,
+      "mean_clean_fraction": 0.21779891304347826,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 0.00019008354841752387,
+      "n_force_samples": 4
+    },
+    {
+      "tolerance_A": 0.005,
+      "mean_phi": 0.6472826086956521,
+      "median_phi": 0.735733695652174,
+      "p90_phi": 0.9061141304347826,
+      "p95_phi": 0.9126358695652175,
+      "max_phi": 0.9191576086956522,
+      "mean_clean_fraction": 0.3527173913043478,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 0.0016388704797030865,
+      "n_force_samples": 4
+    },
+    {
+      "tolerance_A": 0.01,
+      "mean_phi": 0.3457880434782609,
+      "median_phi": 0.27717391304347827,
+      "p90_phi": 0.6808423913043479,
+      "p95_phi": 0.6817934782608696,
+      "max_phi": 0.6827445652173914,
+      "mean_clean_fraction": 0.654211956521739,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 0.006167729144475451,
+      "n_force_samples": 4
+    },
+    {
+      "tolerance_A": 0.02,
+      "mean_phi": 0.14959239130434782,
+      "median_phi": 0.08899456521739131,
+      "p90_phi": 0.33043478260869563,
+      "p95_phi": 0.3323369565217391,
+      "max_phi": 0.3342391304347826,
+      "mean_clean_fraction": 0.8504076086956521,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 0.013186006957811157,
+      "n_force_samples": 4
+    },
+    {
+      "tolerance_A": 0.05,
+      "mean_phi": 0.0016304347826086956,
+      "median_phi": 0.0,
+      "p90_phi": 0.004891304347826087,
+      "p95_phi": 0.006521739130434781,
+      "max_phi": 0.008152173913043478,
+      "mean_clean_fraction": 0.9983695652173914,
+      "fraction_steps_with_edge_churn": 0.0,
+      "mean_sampled_force_rms_error": 0.026771514198620647,
+      "n_force_samples": 4
+    }
+  ],
+  "theta_status": "not measured; clean fraction is only a geometric reuse upper bound",
+  "force_status": "sampled dense snapshots refreshed at sample cadence; not a production per-edge refresh engine"
+}

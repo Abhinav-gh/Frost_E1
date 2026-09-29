@@ -21,6 +21,7 @@ from frost.e1.force_error import (
     extract_layer1_messages,
     layer1_edge_jvp,
     layer1_edge_vjp,
+    make_layer1_edge_action,
 )
 from frost.e1.model_interface import load_model
 from frost.e1.systems import build_system
@@ -64,6 +65,9 @@ def run(edge_limit: int, displacement: float) -> None:
     jacobian[:edge_limit] = dense["J_ref"]
     clean_mask = torch.zeros(g_ref.shape[0], dtype=torch.bool)
     clean_mask[:edge_limit] = True
+    action_fns = [None] * g_ref.shape[0]
+    for edge in range(edge_limit):
+        action_fns[edge] = make_layer1_edge_action(interface, local, edge)
 
     print("EDGE_COUNT", g_ref.shape[0])
     print("CACHED_EDGE_COUNT", edge_limit)
@@ -157,10 +161,10 @@ def run(edge_limit: int, displacement: float) -> None:
         interface,
         clean_mask,
         g_ref,
-        mode=2,
-        J_ref=jacobian,
+        mode=3,
         vectors=vectors_ref,
         vectors_ref=vectors_ref,
+        action_fns=action_fns,
     )
     summarize_force_error(
         "FIRST_ORDER_PERTURBED",
@@ -176,10 +180,10 @@ def run(edge_limit: int, displacement: float) -> None:
         interface,
         clean_mask,
         g_ref,
-        mode=2,
-        J_ref=jacobian,
+        mode=3,
         vectors=vectors_ref,
         vectors_ref=vectors_ref,
+        action_fns=action_fns,
     )
     summarize_force_error(
         "FIRST_ORDER_ZERO_DISPLACEMENT",

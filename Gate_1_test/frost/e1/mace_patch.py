@@ -34,6 +34,17 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
         vectors = vectors.to(device=mji.device, dtype=mji.dtype)
         vectors_ref = vectors_ref.to(device=mji.device, dtype=mji.dtype)
         replacement = g_ref + torch.einsum("ea,eba->eb", vectors - vectors_ref, J_ref)
+    elif mode == 3:
+        action_fns = state.get("action_fns")
+        vectors = state.get("vectors")
+        vectors_ref = state.get("vectors_ref")
+        if action_fns is None or len(action_fns) != mji.shape[0] or vectors is None or vectors_ref is None:
+            raise ValueError("JVP/VJP cache requires one action per edge and reference vectors")
+        replacement = torch.stack([
+            action_fns[edge](vectors[edge], g_ref[edge], vectors_ref[edge])
+            if bool(clean_mask[edge]) else mji[edge]
+            for edge in range(mji.shape[0])
+        ])
     else:
         raise ValueError(f"Unsupported Frost cache mode: {mode}")
     return torch.where(clean_mask[:, None], replacement, mji)
@@ -62,6 +73,7 @@ def create_patched_forward(original_forward, frost_cache_state):
         "clean_mask": Tensor,   # boolean mask of shape [n_edges]
         "g_ref": Tensor,        # shape [n_edges, F]
         "J_ref": Tensor,        # shape [n_edges, F, 3] (needed if mode=2)
+        "action_fns": list[callable],  # edge-local JVP/VJP actions (needed if mode=3)
         "vectors": Tensor,      # shape [n_edges, 3] current vectors
         "vectors_ref": Tensor,  # shape [n_edges, 3] reference vectors
     }
@@ -94,9 +106,17 @@ def create_patched_forward(original_forward, frost_cache_state):
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
             
+        profile = frost_cache_state.get("profile")
+        if profile is not None and torch.cuda.is_available():
+            tp_start = torch.cuda.Event(enable_timing=True)
+            tp_end = torch.cuda.Event(enable_timing=True)
+            tp_start.record()
         mji = self.conv_tp(
             node_feats[edge_index[0]], edge_attrs, tp_weights
         )
+        if profile is not None and torch.cuda.is_available():
+            tp_end.record()
+            profile.setdefault("layer1_tp_events", []).append((tp_start, tp_end))
 
         if frost_cache_state.get("capture_local_inputs", False) and first_layer:
             frost_cache_state["local_inputs"] = {
@@ -123,9 +143,16 @@ def create_patched_forward(original_forward, frost_cache_state):
         
         # Continue with original logic
         from mace.tools.scatter import scatter_sum
+        if profile is not None and torch.cuda.is_available():
+            agg_start = torch.cuda.Event(enable_timing=True)
+            agg_end = torch.cuda.Event(enable_timing=True)
+            agg_start.record()
         message = scatter_sum(
             src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
         )
+        if profile is not None and torch.cuda.is_available():
+            agg_end.record()
+            profile.setdefault("layer1_aggregation_events", []).append((agg_start, agg_end))
         if hasattr(self, "truncate_ghosts"):
             message = self.truncate_ghosts(message, n_real)
             node_attrs = self.truncate_ghosts(node_attrs, n_real)

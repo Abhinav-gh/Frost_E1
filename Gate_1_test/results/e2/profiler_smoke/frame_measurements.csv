@@ -1,0 +1,2 @@
+step,n_edges,T_exact_total,T_layer1_TP,T_layer1_aggregation,T_rest_forward,T_backward_force,T_edge_geometry,T_total_step_wall
+0,2776,562.23291015625,0.2959359884262085,0.07782399654388428,38.581249475479126,47.53510284423828,138.66370299365371,845.794026972726

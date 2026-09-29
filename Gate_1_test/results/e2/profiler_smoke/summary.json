@@ -1,0 +1,181 @@
+{
+  "metadata": {
+    "stage": "E2",
+    "device": "cuda",
+    "dtype": "float64",
+    "steps": [
+      0
+    ],
+    "warmup": 1,
+    "repeats": 1,
+    "dense_jacobian_enabled": false,
+    "stage_b_runtime_used": false,
+    "n_edges_expected": 2944,
+    "message_features_expected": 2048,
+    "call_graph": {
+      "ASE/MACE batch and neighbor preparation": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/calculators/mace.py:527",
+      "Frost edge geometry": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:93",
+      "MACE model forward/readout": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/modules/models.py:455",
+      "MACE first interaction/Frost interception": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/contextlib.py:170",
+      "layer-1 tensor product and scatter timing": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/contextlib.py:170",
+      "Frost JVP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:283",
+      "Frost VJP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:295",
+      "dirty predicate": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:264",
+      "cache state machine": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/reference_cache.py:71"
+    },
+    "theta": 0.7917808227916332,
+    "theta_definition": "median layer-1 TP / (median layer-1 TP + median layer-1 aggregation)"
+  },
+  "call_graph": {
+    "ASE/MACE batch and neighbor preparation": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/calculators/mace.py:527",
+    "Frost edge geometry": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:93",
+    "MACE model forward/readout": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/site-packages/mace/modules/models.py:455",
+    "MACE first interaction/Frost interception": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/contextlib.py:170",
+    "layer-1 tensor product and scatter timing": "/home/shashankt/.conda/envs/frost_e1/lib/python3.10/contextlib.py:170",
+    "Frost JVP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:283",
+    "Frost VJP action": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/force_error.py:295",
+    "dirty predicate": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/geometry.py:264",
+    "cache state machine": "/home/shashankt/private_storage/projects/Gate_1_test/frost/e1/reference_cache.py:71"
+  },
+  "frames": [
+    {
+      "step": 0,
+      "n_edges": 2776,
+      "measurements": {
+        "T_exact_total": {
+          "n": 1,
+          "median_ms": 562.23291015625,
+          "iqr_ms": 0.0,
+          "p10_ms": 562.23291015625,
+          "p90_ms": 562.23291015625,
+          "min_ms": 562.23291015625,
+          "max_ms": 562.23291015625
+        },
+        "T_layer1_TP": {
+          "n": 1,
+          "median_ms": 0.2959359884262085,
+          "iqr_ms": 0.0,
+          "p10_ms": 0.2959359884262085,
+          "p90_ms": 0.2959359884262085,
+          "min_ms": 0.2959359884262085,
+          "max_ms": 0.2959359884262085
+        },
+        "T_layer1_aggregation": {
+          "n": 1,
+          "median_ms": 0.07782399654388428,
+          "iqr_ms": 0.0,
+          "p10_ms": 0.07782399654388428,
+          "p90_ms": 0.07782399654388428,
+          "min_ms": 0.07782399654388428,
+          "max_ms": 0.07782399654388428
+        },
+        "T_rest_forward": {
+          "n": 1,
+          "median_ms": 38.581249475479126,
+          "iqr_ms": 0.0,
+          "p10_ms": 38.581249475479126,
+          "p90_ms": 38.581249475479126,
+          "min_ms": 38.581249475479126,
+          "max_ms": 38.581249475479126
+        },
+        "T_backward_force": {
+          "n": 1,
+          "median_ms": 47.53510284423828,
+          "iqr_ms": 0.0,
+          "p10_ms": 47.53510284423828,
+          "p90_ms": 47.53510284423828,
+          "min_ms": 47.53510284423828,
+          "max_ms": 47.53510284423828
+        },
+        "T_edge_geometry": {
+          "n": 1,
+          "median_ms": 138.66370299365371,
+          "iqr_ms": 0.0,
+          "p10_ms": 138.66370299365371,
+          "p90_ms": 138.66370299365371,
+          "min_ms": 138.66370299365371,
+          "max_ms": 138.66370299365371
+        },
+        "T_total_step_wall": {
+          "n": 1,
+          "median_ms": 845.794026972726,
+          "iqr_ms": 0.0,
+          "p10_ms": 845.794026972726,
+          "p90_ms": 845.794026972726,
+          "min_ms": 845.794026972726,
+          "max_ms": 845.794026972726
+        }
+      }
+    }
+  ],
+  "microbenchmarks": [
+    {
+      "step": 0,
+      "measurements": {
+        "JVP_16_edges": {
+          "n": 1,
+          "median_ms": 237.25978088378906,
+          "iqr_ms": 0.0,
+          "p10_ms": 237.25978088378906,
+          "p90_ms": 237.25978088378906,
+          "min_ms": 237.25978088378906,
+          "max_ms": 237.25978088378906
+        },
+        "VJP_16_edges": {
+          "n": 1,
+          "median_ms": 140.6597137451172,
+          "iqr_ms": 0.0,
+          "p10_ms": 140.6597137451172,
+          "p90_ms": 140.6597137451172,
+          "min_ms": 140.6597137451172,
+          "max_ms": 140.6597137451172
+        },
+        "affine_cache_update": {
+          "n": 1,
+          "median_ms": 0.22732800245285034,
+          "iqr_ms": 0.0,
+          "p10_ms": 0.22732800245285034,
+          "p90_ms": 0.22732800245285034,
+          "min_ms": 0.22732800245285034,
+          "max_ms": 0.22732800245285034
+        },
+        "predicate": {
+          "n": 1,
+          "median_ms": 18.953216552734375,
+          "iqr_ms": 0.0,
+          "p10_ms": 18.953216552734375,
+          "p90_ms": 18.953216552734375,
+          "min_ms": 18.953216552734375,
+          "max_ms": 18.953216552734375
+        },
+        "compaction": {
+          "n": 1,
+          "median_ms": 0.13414399325847626,
+          "iqr_ms": 0.0,
+          "p10_ms": 0.13414399325847626,
+          "p90_ms": 0.13414399325847626,
+          "min_ms": 0.13414399325847626,
+          "max_ms": 0.13414399325847626
+        },
+        "cache_reconstruction": {
+          "n": 1,
+          "median_ms": 0.23552000522613525,
+          "iqr_ms": 0.0,
+          "p10_ms": 0.23552000522613525,
+          "p90_ms": 0.23552000522613525,
+          "min_ms": 0.23552000522613525,
+          "max_ms": 0.23552000522613525
+        },
+        "dirty_TP": {
+          "n": 1,
+          "median_ms": 1.0496000051498413,
+          "iqr_ms": 0.0,
+          "p10_ms": 1.0496000051498413,
+          "p90_ms": 1.0496000051498413,
+          "min_ms": 1.0496000051498413,
+          "max_ms": 1.0496000051498413
+        }
+      }
+    }
+  ]
+}

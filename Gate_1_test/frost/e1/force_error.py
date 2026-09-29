@@ -40,6 +40,44 @@ from ase import Atoms
 from frost.e1.mace_patch import apply_frost_patch
 
 
+class _FirstOrderEdgeAction:
+    """Autograd bridge for a cached edge JVP with a VJP backward action."""
+
+    @staticmethod
+    def apply(current_vector, g_ref, vectors_ref, jvp_fn, vjp_fn):
+        import torch
+
+        class _Action(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, current, reference_message, reference_vector):
+                ctx.jvp_fn = jvp_fn
+                ctx.vjp_fn = vjp_fn
+                ctx.save_for_backward(reference_vector)
+                delta = current.detach() - reference_vector.detach()
+                correction = jvp_fn(delta)
+                return reference_message.detach() + correction
+
+            @staticmethod
+            def backward(ctx, upstream):
+                (reference_vector,) = ctx.saved_tensors
+                del reference_vector
+                with torch.enable_grad():
+                    current_gradient = ctx.vjp_fn(upstream)
+                return current_gradient, None, None
+
+        return _Action.apply(current_vector, g_ref, vectors_ref)
+
+
+def make_first_order_edge_action(jvp_fn, vjp_fn):
+    """Create one edge-local affine action from JVP and VJP callables."""
+    def action(current_vector, g_ref, vectors_ref):
+        return _FirstOrderEdgeAction.apply(
+            current_vector, g_ref, vectors_ref, jvp_fn, vjp_fn
+        )
+
+    return action
+
+
 def _eager_spherical_harmonics(vector, spherical_harmonics):
     """Match e3nn's l<=3 basis without its scripted kernel boundary."""
     import torch
@@ -265,6 +303,14 @@ def layer1_edge_vjp(model_interface, local_inputs: dict, edge: int, upstream):
     output = message(vector)
     return torch.autograd.grad((output * upstream).sum(), vector)[0]
 
+
+def make_layer1_edge_action(model_interface, local_inputs: dict, edge: int):
+    """Bind a reference edge's direct JVP and VJP actions for mode 3."""
+    return make_first_order_edge_action(
+        lambda direction: layer1_edge_jvp(model_interface, local_inputs, edge, direction),
+        lambda upstream: layer1_edge_vjp(model_interface, local_inputs, edge, upstream),
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -404,6 +450,7 @@ def compute_cached_forces(
     J_ref=None,
     vectors=None,
     vectors_ref=None,
+    action_fns=None,
 ) -> Tuple[float, np.ndarray]:
     """Evaluate MACE on unchanged coordinates with edge-local interception."""
     import torch
@@ -423,6 +470,13 @@ def compute_cached_forces(
         state.update({
             "J_ref": torch.as_tensor(J_ref),
             "vectors": torch.as_tensor(vectors),
+            "vectors_ref": torch.as_tensor(vectors_ref),
+        })
+    elif mode == 3:
+        if action_fns is None or vectors_ref is None:
+            raise ValueError("JVP/VJP cache requires action_fns and vectors_ref")
+        state.update({
+            "action_fns": action_fns,
             "vectors_ref": torch.as_tensor(vectors_ref),
         })
     from frost.e1.mace_patch import capture_layer1_vectors
