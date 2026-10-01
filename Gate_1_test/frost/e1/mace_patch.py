@@ -1,5 +1,6 @@
 import contextlib
 import types
+import time
 from typing import Optional, Any, Tuple
 
 import torch
@@ -102,21 +103,37 @@ def create_patched_forward(original_forward, frost_cache_state):
                 lammps_natoms=lammps_natoms,
                 first_layer=first_layer,
             )
-        tp_weights = self.conv_tp_weights(edge_feats)
-        if cutoff is not None:
-            tp_weights = tp_weights * cutoff
-            
         profile = frost_cache_state.get("profile")
+        message_cpu_start = None
+        tp_cpu_start = None
+        if profile is not None and torch.cuda.is_available():
+            message_start = torch.cuda.Event(enable_timing=True)
+            message_end = torch.cuda.Event(enable_timing=True)
+            message_start.record()
+            profile.setdefault("layer1_message_events", []).append((message_start, message_end))
+        if profile is not None and not torch.cuda.is_available():
+            message_cpu_start = time.perf_counter()
         if profile is not None and torch.cuda.is_available():
             tp_start = torch.cuda.Event(enable_timing=True)
             tp_end = torch.cuda.Event(enable_timing=True)
             tp_start.record()
+        if profile is not None and not torch.cuda.is_available():
+            tp_cpu_start = time.perf_counter()
+        tp_weights = self.conv_tp_weights(edge_feats)
+        if cutoff is not None:
+            tp_weights = tp_weights * cutoff
         mji = self.conv_tp(
             node_feats[edge_index[0]], edge_attrs, tp_weights
         )
         if profile is not None and torch.cuda.is_available():
             tp_end.record()
             profile.setdefault("layer1_tp_events", []).append((tp_start, tp_end))
+        if profile is not None and not torch.cuda.is_available():
+            profile.setdefault("layer1_tp_cpu_ms", []).append((time.perf_counter() - tp_cpu_start) * 1000.0)
+        if profile is not None and torch.cuda.is_available():
+            message_end.record()
+        if profile is not None and not torch.cuda.is_available():
+            profile.setdefault("layer1_message_cpu_ms", []).append((time.perf_counter() - message_cpu_start) * 1000.0)
 
         if frost_cache_state.get("capture_local_inputs", False) and first_layer:
             frost_cache_state["local_inputs"] = {
@@ -143,16 +160,21 @@ def create_patched_forward(original_forward, frost_cache_state):
         
         # Continue with original logic
         from mace.tools.scatter import scatter_sum
-        if profile is not None and torch.cuda.is_available():
+        aggregation_cpu_start = None
+        if profile is not None and torch.cuda.is_available() and first_layer:
             agg_start = torch.cuda.Event(enable_timing=True)
             agg_end = torch.cuda.Event(enable_timing=True)
             agg_start.record()
+        if profile is not None and not torch.cuda.is_available() and first_layer:
+            aggregation_cpu_start = time.perf_counter()
         message = scatter_sum(
             src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
         )
-        if profile is not None and torch.cuda.is_available():
+        if profile is not None and torch.cuda.is_available() and first_layer:
             agg_end.record()
             profile.setdefault("layer1_aggregation_events", []).append((agg_start, agg_end))
+        if profile is not None and not torch.cuda.is_available() and first_layer:
+            profile.setdefault("layer1_aggregation_cpu_ms", []).append((time.perf_counter() - aggregation_cpu_start) * 1000.0)
         if hasattr(self, "truncate_ghosts"):
             message = self.truncate_ghosts(message, n_real)
             node_attrs = self.truncate_ghosts(node_attrs, n_real)
