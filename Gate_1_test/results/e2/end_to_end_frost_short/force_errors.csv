@@ -1,0 +1,4 @@
+step,energy_error_eV,force_rms_error_meV_A,force_max_error_meV_A,finite
+0,0.0,0.0,0.0,True
+1,0.0,0.0,0.0,True
+2,0.0,0.0,0.0,True

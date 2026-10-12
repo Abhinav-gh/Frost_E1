@@ -1,0 +1,83 @@
+{
+  "experiment": "short_end_to_end_exact_vs_integrated_frost",
+  "git_commit": "492024294ebc6bc25d93039c5235e88c4322165d",
+  "model": "mace-mp-0",
+  "device": "cuda",
+  "dtype": "float64",
+  "system": "diamond_si_64_atoms",
+  "temperature_K": 300.0,
+  "seed": 42,
+  "warmup_steps": 2,
+  "timed_steps": 3,
+  "tolerance_A": 0.01,
+  "dense_jacobian_enabled": false,
+  "frost_action_mode": 3,
+  "frost_action_path_used": true,
+  "exact": {
+    "warmup_seconds": 2.4801249681040645,
+    "timed_total_seconds": 0.2899910791311413,
+    "step_timing": {
+      "n": 3,
+      "mean_seconds": 0.09638935428423186,
+      "median_seconds": 0.09626680496148765,
+      "p90_seconds": 0.09663825216703117,
+      "min_seconds": 0.09617014392279088,
+      "max_seconds": 0.09673111396841705
+    },
+    "throughput_steps_per_second": 10.345145819617866
+  },
+  "frost": {
+    "warmup_seconds": 88.79187729698606,
+    "timed_total_seconds": 130.45585548412055,
+    "step_timing": {
+      "n": 3,
+      "mean_seconds": 43.48458590606848,
+      "median_seconds": 51.3154191961512,
+      "p90_seconds": 56.16951139606535,
+      "min_seconds": 21.75530407601036,
+      "max_seconds": 57.383034446043894
+    },
+    "throughput_steps_per_second": 0.022996284749864437
+  },
+  "speedup": {
+    "total_wall_speedup": 0.002222905810206732,
+    "median_step_speedup": 0.0018759820433993052
+  },
+  "accuracy": {
+    "rows": [
+      {
+        "step": 0,
+        "energy_error_eV": 0.0,
+        "force_rms_error_meV_A": 0.0,
+        "force_max_error_meV_A": 0.0,
+        "finite": true
+      },
+      {
+        "step": 1,
+        "energy_error_eV": 0.0,
+        "force_rms_error_meV_A": 0.0,
+        "force_max_error_meV_A": 0.0,
+        "finite": true
+      },
+      {
+        "step": 2,
+        "energy_error_eV": 0.0,
+        "force_rms_error_meV_A": 0.0,
+        "force_max_error_meV_A": 0.0,
+        "finite": true
+      }
+    ],
+    "all_finite": true
+  },
+  "reuse": {
+    "mean_phi": 0.39356884057971014,
+    "mean_clean_fraction": 0.6064311663309733,
+    "mean_n_edges": 2944.0
+  },
+  "stability": {
+    "exact_final_temperature_K": 248.42959243268942,
+    "frost_final_temperature_K": 249.40578260273094,
+    "exact_final_energy_eV": -341.6647711849982,
+    "frost_final_energy_eV": -341.66646511092324
+  }
+}
