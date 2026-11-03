@@ -32,10 +32,13 @@ from frost.e1.trajectory import initialize_velocities
 class IntegratedFrostCalculator(Calculator):
     implemented_properties = ["energy", "forces"]
 
-    def __init__(self, model, tolerance_A: float):
+    def __init__(self, model, tolerance_A: float, cache_mode: int = 3):
         super().__init__()
         self.model = model
         self.tolerance_A = tolerance_A
+        if cache_mode not in (1, 3):
+            raise ValueError("cache_mode must be 1 (zeroth-order) or 3 (first-order JVP/VJP)")
+        self.cache_mode = cache_mode
         self.cache = PerEdgeReferenceCache([tolerance_A])
         self.timestep = 0
         self.initialized = False
@@ -91,7 +94,7 @@ class IntegratedFrostCalculator(Calculator):
                 self.model,
                 clean_mask,
                 g_reference,
-                mode=3,
+                mode=self.cache_mode,
                 vectors=current_vectors,
                 vectors_ref=vectors_reference,
                 action_fns=action_fns,
@@ -118,8 +121,13 @@ class IntegratedFrostCalculator(Calculator):
                 "clean_fraction": float(clean_mask.float().mean().item()),
                 "n_new": stats["n_edges_new"],
                 "n_removed": stats["n_edges_removed"],
+                "n_reference_refreshes": int(len(dirty_keys)),
+                "edge_mapping_matched": bool(mapping["matched"]),
+                "max_reference_generation": max(
+                    (entry.generation for entry in self.cache._entries.values()), default=0
+                ),
                 "reference_action_edges": int(clean_mask.sum().item()),
-                "action_mode": 3,
+                "action_mode": self.cache_mode,
                 "dense_jacobian_enabled": False,
             })
         self.timestep += 1
@@ -143,7 +151,7 @@ def run_trajectory(model, method, temperature, warmup_steps, timed_steps, seed, 
     if method == "exact":
         calculator = ExactCalculator(model)
     else:
-        calculator = IntegratedFrostCalculator(model, tolerance_A)
+    calculator = IntegratedFrostCalculator(model, tolerance_A)
     atoms.calc = calculator
     initialize_velocities(atoms, temperature, seed)
     dynamics = Langevin(
