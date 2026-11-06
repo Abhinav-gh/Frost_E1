@@ -1,0 +1,260 @@
+
+{
+  "stage": "B",
+
+  "input_csv": "path/to/per_timestep.csv",
+  "trajectory_path": "path/to/trajectory.traj",
+
+  "selected_steps": [40, 130, 250],
+  "selected_tolerances_A": [0.01, 0.02, 0.05],
+  "n_selected_rows": 9,
+
+  "reference_configurations": [0, 40, 80, 130],
+  "reference_configuration_count": 4,
+
+  "dense_jacobian_enabled": false,
+  "jacobian_chunk_size": null,
+  "batched_action_chunk_size": null,
+
+  "peak_cuda_allocated_bytes": 123456789,
+  "cache_mode": 3,
+
+  "action_evaluation_seconds": 120.5,
+  "total_stage_b_runtime_seconds": 145.8,
+
+  "pilot_mode": false,
+  "sampling": "explicit_steps",
+  "sample_count_requested": 0,
+
+  "model": "mace-mp-0",
+  "device": "cuda",
+  "dtype": "float64",
+
+  "accuracy_results_csv": "path/to/accuracy_results.csv",
+
+  "summaries_by_tolerance": [
+    {
+      "tolerance_A": 0.01,
+      "n_rows": 3,
+
+      "phi": {
+        "mean": 0.25,
+        "median": 0.24,
+        "std": 0.03,
+        "min": 0.20,
+        "max": 0.28
+      },
+
+      "clean_fraction": {
+        "mean": 0.75,
+        "median": 0.76,
+        "std": 0.03,
+        "min": 0.72,
+        "max": 0.80
+      },
+
+      "energy_error_eV": {
+        "mean": 0.001,
+        "median": 0.0009,
+        "std": 0.0002,
+        "min": 0.0007,
+        "max": 0.0012
+      },
+
+      "energy_error_per_atom_eV": {
+        "mean": 0.00001,
+        "median": 0.000009,
+        "std": 0.000002,
+        "min": 0.000007,
+        "max": 0.000012
+      },
+
+      "force_rms_error_meV_A": {
+        "mean": 2.5,
+        "median": 2.3,
+        "std": 0.4,
+        "min": 2.0,
+        "max": 3.0
+      },
+
+      "force_max_error_meV_A": {
+        "mean": 8.5,
+        "median": 8.0,
+        "std": 1.2,
+        "min": 7.0,
+        "max": 10.0
+      },
+
+      "force_atom_p95_error_meV_A": {
+        "mean": 5.0,
+        "median": 4.8,
+        "std": 0.5,
+        "min": 4.5,
+        "max": 5.5
+      },
+
+      "force_atom_p99_error_meV_A": {
+        "mean": 7.0,
+        "median": 6.8,
+        "std": 0.7,
+        "min": 6.0,
+        "max": 7.8
+      },
+
+      "force_atom_p90_error_meV_A": {
+        "mean": 4.0,
+        "median": 3.9,
+        "std": 0.4,
+        "min": 3.5,
+        "max": 4.5
+      },
+
+      "edge_message_clean_rms": {
+        "mean": 0.0001,
+        "median": 0.00009,
+        "std": 0.00002,
+        "min": 0.00007,
+        "max": 0.00012
+      },
+
+      "edge_message_clean_max": {
+        "mean": 0.0005,
+        "median": 0.0004,
+        "std": 0.0001,
+        "min": 0.0003,
+        "max": 0.0006
+      },
+
+      "edge_message_dirty_max": {
+        "mean": 0.02,
+        "median": 0.018,
+        "std": 0.003,
+        "min": 0.015,
+        "max": 0.025
+      },
+
+      "reference_age_mean_steps": {
+        "mean": 5.0,
+        "median": 4.0,
+        "std": 2.0,
+        "min": 2.0,
+        "max": 8.0
+      },
+
+      "reference_age_max_steps": {
+        "mean": 10.0,
+        "median": 10.0,
+        "std": 2.0,
+        "min": 8.0,
+        "max": 12.0
+      },
+
+      "relative_force_error": {
+        "mean": 0.002,
+        "median": 0.0018,
+        "std": 0.0004,
+        "min": 0.0015,
+        "max": 0.0025
+      },
+
+      "action_evaluation_seconds": {
+        "mean": 1.5,
+        "median": 1.4,
+        "std": 0.2,
+        "min": 1.2,
+        "max": 1.8
+      },
+
+      "n_clean": {
+        "mean": 750.0,
+        "median": 760.0,
+        "std": 30.0,
+        "min": 720.0,
+        "max": 800.0
+      },
+
+      "n_dirty": {
+        "mean": 250.0,
+        "median": 240.0,
+        "std": 30.0,
+        "min": 200.0,
+        "max": 280.0
+      },
+
+      "n_reference_configurations_used": {
+        "mean": 3.0,
+        "median": 3.0,
+        "std": 1.0,
+        "min": 2.0,
+        "max": 4.0
+      },
+
+      "all_finite": true
+    }
+  ],
+
+  "force_error_budgets": {
+    "5.0": {
+      "budget_meV_A": 5.0,
+      "largest_observed_clean_fraction": 0.80,
+      "eligible_rows": 2,
+      "criterion": "maximum force error, not mean or RMS"
+    },
+    "10.0": {
+      "budget_meV_A": 10.0,
+      "largest_observed_clean_fraction": 0.85,
+      "eligible_rows": 6,
+      "criterion": "maximum force error, not mean or RMS"
+    },
+    "20.0": {
+      "budget_meV_A": 20.0,
+      "largest_observed_clean_fraction": 0.90,
+      "eligible_rows": 9,
+      "criterion": "maximum force error, not mean or RMS"
+    }
+  },
+
+  "force_error_executed": true,
+  "all_finite": true,
+
+  "selected_rows": [
+    {
+      "step": 40,
+      "tolerance_A": 0.01,
+      "phi": 0.25,
+      "n_edges": 1000,
+      "n_clean": 750,
+      "n_dirty": 250,
+
+      "exact_energy_eV": -100.5,
+      "frost_energy_eV": -100.499,
+      "energy_error_eV": 0.001,
+      "energy_error_per_atom_eV": 0.00001,
+
+      "force_max_error_meV_A": 8.5,
+      "force_mean_error_meV_A": 1.5,
+      "force_rms_error_meV_A": 2.5,
+
+      "force_atom_p90_error_meV_A": 4.0,
+      "force_atom_p95_error_meV_A": 5.0,
+      "force_atom_p99_error_meV_A": 7.0,
+
+      "edge_message_clean_rms": 0.0001,
+      "edge_message_clean_max": 0.0005,
+      "edge_message_dirty_max": 0.02,
+
+      "reference_age_mean_steps": 5.0,
+      "reference_age_max_steps": 10,
+
+      "relative_force_error": 0.002,
+
+      "finite": true,
+      "status": "ok",
+
+      "n_reference_configurations_used": 3,
+      "action_evaluation_seconds": 1.5
+    }
+  ],
+
+  "notes": "Stage B evaluates exact MACE and the selected reuse mode only for sampled snapshots and required references. Modes 2 and 4 are batched first-order alternatives (dense Jacobian and JVP/VJP); mode 3 is serial per-edge JVP/VJP."
+}

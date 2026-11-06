@@ -1,0 +1,17 @@
+{
+  "experiment_name": "w5_matched_start_rollout",
+  "model": "mace-mp-0",
+  "device": "cuda",
+  "dtype": "float64",
+  "structure": "diamond_si",
+  "temperature_K": 300.0,
+  "seeds": [42, 137, 271],
+  "warmup_steps": 100,
+  "production_steps": 500,
+  "timestep_fs": 1.0,
+  "friction_per_fs": 0.01,
+  "tolerances_A": [0.005, 0.01, 0.02],
+  "cache_mode": 4,
+  "batched_action_chunk_size": 256,
+  "output_root": "results/active/w5_rollouts"
+}

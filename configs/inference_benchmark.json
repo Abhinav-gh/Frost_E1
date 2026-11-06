@@ -1,0 +1,13 @@
+{
+  "experiment_name": "w4_fixed_configuration",
+  "model": "mace-mp-0",
+  "device": "cuda",
+  "dtype": "float64",
+  "warmup": 10,
+  "evaluations": 100,
+  "repeats": 3,
+  "cache_mode": 4,
+  "batched_action_chunk_size": 256,
+  "tolerance_A": 0.01,
+  "output_root": "results/active/w4_inference"
+}

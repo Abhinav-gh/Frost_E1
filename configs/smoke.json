@@ -1,0 +1,23 @@
+{
+  "experiment_name": "smoke_non_publication",
+  "cache_policy": "threshold",
+  "reference_update_policy": "refresh_dirty_edges",
+  "jvp_vjp_mode": "mode4_preferred",
+  "model": "mace-mp-0",
+  "device": "cuda",
+  "dtype": "float64",
+  "structures": ["diamond_si"],
+  "temperatures_K": [300.0],
+  "seeds": [42],
+  "equilibration_steps": 2,
+  "production_steps": 5,
+  "timestep_fs": 1.0,
+  "friction_per_fs": 0.01,
+  "tolerances_A": [0.005, 0.01],
+  "accuracy_sample_count": 2,
+  "accuracy_cache_modes": [1, 3, 4],
+  "batched_action_chunk_size": 64,
+  "jacobian_chunk_size": 64,
+  "sampling": "time_stratified",
+  "output_root": "results/active/smoke"
+}
