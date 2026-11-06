@@ -82,6 +82,11 @@ def run(args):
                                 "--dtype", config["dtype"], "--cache-mode", str(mode),
                                 "--output-dir", str(target),
                             ]
+                            if mode == 2:
+                                stage_b_cmd.extend([
+                                    "--jacobian-chunk-size",
+                                    str(config.get("jacobian_chunk_size", 64)),
+                                ])
                             print("RUN", subprocess.list2cmdline(stage_b_cmd), flush=True)
                             subprocess.run(stage_b_cmd, cwd=ROOT, check=True)
 

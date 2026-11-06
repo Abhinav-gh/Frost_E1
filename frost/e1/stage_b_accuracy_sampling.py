@@ -143,23 +143,33 @@ def _replay_reference_states(frames, cutoff: float, tolerances: list[float], sel
     return selected_states
 
 
-def _keyed_dense_reference(model, atoms, expected_keys, dense_cache, timestep, chunk_size=64):
+def _keyed_dense_reference(model, atoms, expected_keys, dense_cache, timestep,
+                           chunk_size=64, requested_keys=None):
     """Extract one dense snapshot and return its values indexed by edge key."""
-    cached = dense_cache.get(timestep)
-    if cached is not None:
+    cached = dense_cache.setdefault(timestep, {})
+    requested = set(expected_keys if requested_keys is None else requested_keys)
+    missing = requested - set(cached)
+    if not missing:
         return cached
 
-    dense = extract_layer1_dense_jacobian(model, atoms, chunk_size=chunk_size)
-    unit_shifts = extract_layer1_local_inputs(model, atoms)["unit_shifts"]
-    keys = mace_edge_keys(dense["edge_index"], unit_shifts)
-    comparison = compare_edge_key_sets(expected_keys, keys)
+    local = extract_layer1_local_inputs(model, atoms)
+    all_keys = mace_edge_keys(local["edge_index"], local["unit_shifts"])
+    comparison = compare_edge_key_sets(expected_keys, all_keys)
     if not comparison["matched"]:
+        raise RuntimeError(f"Stage-B edge mapping mismatch at dense reference step {timestep}: {comparison}")
+    missing_indices = [index for index, key in enumerate(all_keys) if key in missing]
+    missing_keys = [all_keys[index] for index in missing_indices]
+    if set(missing_keys) != missing:
         raise RuntimeError(
-            f"Stage-B edge mapping mismatch at reference step {timestep}: "
-            f"ASE={comparison['ase_count']} MACE={comparison['mace_count']} "
-            f"missing_from_mace={comparison['missing_from_mace'][:5]} "
-            f"missing_from_ase={comparison['missing_from_ase'][:5]}"
+            f"Stage-B requested edge mapping mismatch at reference step {timestep}: "
+            f"requested={len(missing)} matched={len(missing_keys)}"
         )
+    dense = extract_layer1_dense_jacobian(
+        model, atoms, chunk_size=chunk_size, edge_indices=missing_indices
+    )
+    keys = mace_edge_keys(
+        dense["edge_index"], local["unit_shifts"][dense["selected_edge_indices"]]
+    )
     keyed = {
         key: {
             "g": dense["g_ref"][index].detach().clone(),
@@ -168,14 +178,17 @@ def _keyed_dense_reference(model, atoms, expected_keys, dense_cache, timestep, c
         }
         for index, key in enumerate(keys)
     }
-    dense_cache[timestep] = keyed
-    return keyed
+    cached.update(keyed)
+    return cached
 
 
-def _keyed_action_reference(model, atoms, expected_keys, action_cache, timestep, with_actions=True):
+def _keyed_action_reference(model, atoms, expected_keys, action_cache, timestep,
+                            with_actions=True, requested_keys=None):
     """Capture reference messages and bind JVP/VJP actions without dense J."""
-    cached = action_cache.get(timestep)
-    if cached is not None:
+    cached = action_cache.setdefault(timestep, {})
+    requested = set(expected_keys if requested_keys is None else requested_keys)
+    missing = requested - set(cached)
+    if not missing:
         return cached
     local = extract_layer1_local_inputs(model, atoms)
     keys = mace_edge_keys(local["edge_index"], local["unit_shifts"])
@@ -184,16 +197,19 @@ def _keyed_action_reference(model, atoms, expected_keys, action_cache, timestep,
         raise RuntimeError(
             f"Stage-B edge mapping mismatch at reference step {timestep}: {comparison}"
         )
+    indices = {key: index for index, key in enumerate(keys)}
+    if not missing.issubset(indices):
+        raise RuntimeError(f"Stage-B requested edge missing from reference timestep {timestep}")
     keyed = {
         key: {
-            "g": local["mji"][index].detach().clone(),
-            "vectors": local["vectors"][index].detach().clone(),
-            "action": make_layer1_edge_action(model, local, index) if with_actions else None,
+            "g": local["mji"][indices[key]].detach().clone(),
+            "vectors": local["vectors"][indices[key]].detach().clone(),
+            "action": make_layer1_edge_action(model, local, indices[key]) if with_actions else None,
         }
-        for index, key in enumerate(keys)
+        for key in missing
     }
-    action_cache[timestep] = keyed
-    return keyed
+    cached.update(keyed)
+    return cached
 
 
 def _reference_plan(selected_states, selected_steps, tolerances):
@@ -325,7 +341,15 @@ def run(args):
             evaluation_started = time.perf_counter()
             state = selected_states[tolerance][step]
             references = state["references"]
-            reference_timesteps = {entry["ref_timestep"] for entry in references.values()}
+            dirty_keys = state["stats"]["dirty_keys_by_eps"][tolerance]
+            clean_reference_keys = {
+                key for key, entry in references.items()
+                if key not in dirty_keys
+                and np.linalg.norm(current_edges[key]["r_ij"] - entry["ref_r_ij"]) <= tolerance
+            }
+            reference_timesteps = {
+                references[key]["ref_timestep"] for key in clean_reference_keys
+            }
             debug_print(
                 args,
                 f"step {step}, tolerance={tolerance:g} A: "
@@ -337,15 +361,21 @@ def run(args):
             for reference_step in reference_timesteps:
                 reference_atoms = traj[reference_step]
                 reference_edges = build_edge_geometry_from_ase(reference_atoms, model.cutoff)
+                requested_keys = {
+                    key for key in clean_reference_keys
+                    if references[key]["ref_timestep"] == reference_step
+                }
                 if cache_mode == 2:
                     reference_by_timestep[reference_step] = _keyed_dense_reference(
                         model, reference_atoms, reference_edges.keys(), dense_cache,
                         reference_step, chunk_size=getattr(args, "jacobian_chunk_size", 64),
+                        requested_keys=requested_keys,
                     )
                 else:
                     reference_by_timestep[reference_step] = _keyed_action_reference(
                         model, reference_atoms, reference_edges.keys(), action_cache,
                         reference_step, with_actions=(cache_mode == 3),
+                        requested_keys=requested_keys,
                     )
             action_reference_frames = len(reference_cache)
 
@@ -360,11 +390,11 @@ def run(args):
             reference_ages = []
             for key, entry in references.items():
                 index = current_by_key[key]
-                reference_values = reference_by_timestep[entry["ref_timestep"]][key]
                 displacement = np.linalg.norm(
                     current_edges[key]["r_ij"] - entry["ref_r_ij"]
                 )
-                if key not in state["stats"]["dirty_keys_by_eps"][tolerance] and displacement <= tolerance:
+                if key not in dirty_keys and displacement <= tolerance:
+                    reference_values = reference_by_timestep[entry["ref_timestep"]][key]
                     clean_mask[index] = True
                     reference_ages.append(step - entry["ref_timestep"])
                     g_reference[index] = reference_values["g"]

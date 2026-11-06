@@ -206,6 +206,7 @@ def extract_layer1_dense_jacobian(
     atoms: Atoms,
     edge_limit: Optional[int] = None,
     chunk_size: int = 16,
+    edge_indices=None,
 ) -> dict:
     """Reference dense per-edge Jacobian using vectorized ``jacrev``."""
     import torch
@@ -215,9 +216,17 @@ def extract_layer1_dense_jacobian(
     model = model_interface.calculator.models[0]
     block = model.interactions[0]
     edge_count = local["vectors"].shape[0]
-    limit = edge_count if edge_limit is None else min(edge_limit, edge_count)
-    vectors = local["vectors"][:limit].detach()
-    edge_index = local["edge_index"][:, :limit]
+    if edge_indices is not None and edge_limit is not None:
+        raise ValueError("Use edge_indices or edge_limit, not both")
+    if edge_indices is None:
+        limit = edge_count if edge_limit is None else min(edge_limit, edge_count)
+        selected_edges = torch.arange(limit, device=local["vectors"].device)
+    else:
+        selected_edges = torch.as_tensor(edge_indices, dtype=torch.long, device=local["vectors"].device)
+        if selected_edges.ndim != 1 or torch.any(selected_edges < 0) or torch.any(selected_edges >= edge_count):
+            raise ValueError("edge_indices must be a one-dimensional list of valid edge indices")
+    vectors = local["vectors"][selected_edges].detach()
+    edge_index = local["edge_index"][:, selected_edges]
     source_features = local["node_feats"][edge_index[0]].detach()
     node_attrs = local["node_attrs"]
     atomic_numbers = model.atomic_numbers
@@ -252,6 +261,7 @@ def extract_layer1_dense_jacobian(
         "J_ref": jacobian.detach(),
         "vectors_ref": vectors.detach(),
         "edge_index": edge_index.detach(),
+        "selected_edge_indices": selected_edges.detach(),
         "edge_count_total": edge_count,
     }
 
