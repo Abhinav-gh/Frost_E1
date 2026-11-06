@@ -143,13 +143,13 @@ def _replay_reference_states(frames, cutoff: float, tolerances: list[float], sel
     return selected_states
 
 
-def _keyed_dense_reference(model, atoms, expected_keys, dense_cache, timestep):
+def _keyed_dense_reference(model, atoms, expected_keys, dense_cache, timestep, chunk_size=64):
     """Extract one dense snapshot and return its values indexed by edge key."""
     cached = dense_cache.get(timestep)
     if cached is not None:
         return cached
 
-    dense = extract_layer1_dense_jacobian(model, atoms, chunk_size=16)
+    dense = extract_layer1_dense_jacobian(model, atoms, chunk_size=chunk_size)
     unit_shifts = extract_layer1_local_inputs(model, atoms)["unit_shifts"]
     keys = mace_edge_keys(dense["edge_index"], unit_shifts)
     comparison = compare_edge_key_sets(expected_keys, keys)
@@ -273,6 +273,8 @@ def run(args):
         device=args.device,
         dtype=getattr(args, "dtype", "float64"),
     )
+    if torch.cuda.is_available() and str(args.device).startswith("cuda"):
+        torch.cuda.reset_peak_memory_stats()
     debug_print(args, f"loaded MACE model on {args.device}; selected_steps={selected_steps}")
     selected_states = _replay_reference_states(
         traj, model.cutoff, selected_tolerances, selected_steps
@@ -294,6 +296,9 @@ def run(args):
         print(json.dumps(plan, indent=2))
         return
     action_cache = {}
+    dense_cache = {}
+    cache_mode = getattr(args, "cache_mode", 3)
+    reference_cache = dense_cache if cache_mode == 2 else action_cache
     result_rows = []
     exact_cache = {}
     action_reference_frames = 0
@@ -332,20 +337,26 @@ def run(args):
             for reference_step in reference_timesteps:
                 reference_atoms = traj[reference_step]
                 reference_edges = build_edge_geometry_from_ase(reference_atoms, model.cutoff)
-                reference_by_timestep[reference_step] = _keyed_action_reference(
-                    model,
-                    reference_atoms,
-                    reference_edges.keys(),
-                    action_cache,
-                    reference_step,
-                    with_actions=(getattr(args, "cache_mode", 3) == 3),
-                )
-            action_reference_frames = len(action_cache)
+                if cache_mode == 2:
+                    reference_by_timestep[reference_step] = _keyed_dense_reference(
+                        model, reference_atoms, reference_edges.keys(), dense_cache,
+                        reference_step, chunk_size=getattr(args, "jacobian_chunk_size", 64),
+                    )
+                else:
+                    reference_by_timestep[reference_step] = _keyed_action_reference(
+                        model, reference_atoms, reference_edges.keys(), action_cache,
+                        reference_step, with_actions=(cache_mode == 3),
+                    )
+            action_reference_frames = len(reference_cache)
 
             clean_mask = torch.zeros(len(current_keys), dtype=torch.bool)
             g_reference = current_local["mji"].detach().clone()
             vectors_reference = current_vectors.clone()
             action_fns = [None] * len(current_keys)
+            J_reference = (torch.zeros(
+                (len(current_keys), current_local["mji"].shape[1], 3),
+                dtype=current_vectors.dtype, device=current_vectors.device,
+            ) if cache_mode == 2 else None)
             reference_ages = []
             for key, entry in references.items():
                 index = current_by_key[key]
@@ -358,7 +369,10 @@ def run(args):
                     reference_ages.append(step - entry["ref_timestep"])
                     g_reference[index] = reference_values["g"]
                     vectors_reference[index] = reference_values["vectors"]
-                    action_fns[index] = reference_values["action"]
+                    if cache_mode == 2:
+                        J_reference[index] = reference_values["J"]
+                    else:
+                        action_fns[index] = reference_values["action"]
 
             message_audit = {}
             frost_energy, frost_forces = compute_cached_forces(
@@ -366,7 +380,8 @@ def run(args):
                 model,
                 clean_mask,
                 g_reference,
-                mode=getattr(args, "cache_mode", 3),
+                mode=cache_mode,
+                J_ref=J_reference,
                 vectors=current_vectors,
                 vectors_ref=vectors_reference,
                 action_fns=action_fns,
@@ -412,6 +427,11 @@ def run(args):
         print(f"[stage-b] evaluated step {step}; action_reference_snapshots={action_reference_frames}", flush=True)
 
     action_seconds = time.perf_counter() - action_started
+    if torch.cuda.is_available() and str(args.device).startswith("cuda"):
+        torch.cuda.synchronize()
+        peak_cuda_allocated_bytes = int(torch.cuda.max_memory_allocated())
+    else:
+        peak_cuda_allocated_bytes = None
 
     result_fields = list(result_rows[0].keys())
     with (output_dir / "accuracy_results.csv").open("w", newline="") as handle:
@@ -470,10 +490,12 @@ def run(args):
         "selected_steps": selected_steps,
         "selected_tolerances_A": selected_tolerances,
         "n_selected_rows": len(result_rows),
-        "reference_configurations": sorted(action_cache),
-        "reference_configuration_count": len(action_cache),
-        "dense_jacobian_enabled": False,
-        "cache_mode": getattr(args, "cache_mode", 3),
+        "reference_configurations": sorted(reference_cache),
+        "reference_configuration_count": len(reference_cache),
+        "dense_jacobian_enabled": cache_mode == 2,
+        "jacobian_chunk_size": getattr(args, "jacobian_chunk_size", 64) if cache_mode == 2 else None,
+        "peak_cuda_allocated_bytes": peak_cuda_allocated_bytes,
+        "cache_mode": cache_mode,
         "action_evaluation_seconds": action_seconds,
         "total_stage_b_runtime_seconds": time.perf_counter() - run_started,
         "pilot_mode": bool(args.pilot),
@@ -488,14 +510,14 @@ def run(args):
         "all_finite": bool(all(row["finite"] for row in result_rows)),
         "selected_rows": result_rows,
         "notes": (
-            "Stage B is intentionally sparse: exact MACE and the selected zeroth- or first-order Frost "
-            "path are evaluated only for selected Stage-A snapshots and their required reference states."
+            "Stage B evaluates exact MACE and the selected reuse mode only for sampled snapshots and required "
+            "references. Mode 2 uses chunked dense local Jacobians; modes 1 and 3 are zeroth-order and JVP/VJP."
         ),
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print(
         f"[stage-b] complete: rows={len(result_rows)} "
-        f"reference_frames={len(action_cache)} "
+        f"reference_frames={len(reference_cache)} "
         f"action_seconds={action_seconds:.1f} "
         f"total_seconds={summary['total_stage_b_runtime_seconds']:.1f}",
         flush=True,
@@ -519,8 +541,10 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--dtype", choices=["float32", "float64"], default="float64")
     parser.add_argument("--model", default="mace-mp-0")
-    parser.add_argument("--cache-mode", type=int, choices=[1, 3], default=3,
-                        help="1=zeroth-order message reuse; 3=first-order JVP/VJP reuse")
+    parser.add_argument("--cache-mode", type=int, choices=[1, 2, 3], default=3,
+                        help="1=zeroth-order; 2=chunked dense Jacobian; 3=per-edge JVP/VJP")
+    parser.add_argument("--jacobian-chunk-size", type=int, default=64,
+                        help="Edges per vectorized dense-Jacobian chunk when --cache-mode 2 is used")
     parser.add_argument("--output-dir", default="results/active/stage_b")
     parser.add_argument("--debug", action="store_true", help="Print concise Stage-B progress messages")
     parser.add_argument("--plan-only", action="store_true", help="Replay cache geometry and report sparse derivative dependencies only")

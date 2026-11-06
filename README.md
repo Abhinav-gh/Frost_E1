@@ -106,6 +106,8 @@ python -m frost.e1.inference_benchmark \
 
 This isolates repeated inference at fixed configurations; it is not an MD rollout timing. Report `timings.csv` distributions and compare with complete MD timings from `frost.e1.end_to_end_benchmark` only when both methods use the same saved starting state and measured scope.
 
+For a batched Stage-B derivative alternative, run the same pilot snapshots with `--cache-mode 2`. This uses chunked `vmap(jacrev)` Jacobians and tensor contractions instead of per-edge JVP/VJP closures. Compare accuracy with mode 3, compare `total_stage_b_runtime_seconds` and `peak_cuda_allocated_bytes`, then sweep chunk sizes (64, 128, 256) in separate output directories. Keep the chunk size that improves runtime without changing the error results materially; the 49 GB card provides headroom for this experiment.
+
 ### 5. Compare longer exact and cached MD rollouts
 
 The paper benchmark equilibrates once with exact MACE and copies the same positions and momenta into each production arm. It records synchronized complete-step wall time, exact force checks on produced frames, cache metrics, and the initial-state hash.
