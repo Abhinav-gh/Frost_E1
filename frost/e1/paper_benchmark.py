@@ -86,12 +86,15 @@ def run_condition(model, method, args, seed, initial_atoms, tolerance=None):
         calc.begin_timing()
 
     rows = []
+    cumulative = 0.0
+    initial_total_energy = float(initial_atoms.get_total_energy())
     for step in range(args.production_steps):
         sync()
         start = time.perf_counter()
         dynamics.run(1)
         sync()
         wall = time.perf_counter() - start
+        cumulative += wall
         snapshot = atoms.copy()
         exact_energy, exact_forces = compute_exact_forces(snapshot, model)
         if method == "exact":
@@ -108,6 +111,7 @@ def run_condition(model, method, args, seed, initial_atoms, tolerance=None):
             "tolerance_A": tolerance if tolerance is not None else "",
             "step": step,
             "wall_seconds": wall,
+            "cumulative_wall_seconds": cumulative,
             "energy_error_eV": abs(float(measured_energy) - float(exact_energy)),
             "force_rms_meV_A": float(np.sqrt(np.mean(delta ** 2)) * 1000.0),
             "force_atom_p50_meV_A": float(np.percentile(force_norms, 50) * 1000.0),
@@ -116,6 +120,21 @@ def run_condition(model, method, args, seed, initial_atoms, tolerance=None):
             "force_atom_max_meV_A": float(np.max(force_norms) * 1000.0),
             "temperature_K": float(atoms.get_temperature()),
             "potential_energy_eV": float(atoms.get_potential_energy()),
+            "kinetic_energy_eV": float(atoms.get_kinetic_energy()),
+            "total_energy_eV": float(atoms.get_total_energy()),
+            "total_energy_drift_eV": float(atoms.get_total_energy() - initial_total_energy),
+            "cache_clean_fraction": (
+                float(calc.records[-1]["clean_fraction"])
+                if method != "exact" and calc.records else ""
+            ),
+            "cache_dirty_fraction": (
+                float(calc.records[-1]["phi"])
+                if method != "exact" and calc.records else ""
+            ),
+            "cache_reference_age_steps": (
+                float(calc.records[-1].get("max_reference_age_steps", 0))
+                if method != "exact" and calc.records else ""
+            ),
             "finite": bool(np.isfinite(measured_energy) and np.isfinite(delta).all()),
         })
     return rows, calc
@@ -165,6 +184,13 @@ def run(args):
         initial_atoms = prepare_production_state(model, args, seed)
         state_bytes = initial_atoms.get_positions().tobytes() + initial_atoms.get_momenta().tobytes()
         initial_state_digests[str(seed)] = hashlib.sha256(state_bytes).hexdigest()
+        np.savez(
+            out / f"initial_state_seed{seed}.npz",
+            positions=initial_atoms.get_positions(),
+            momenta=initial_atoms.get_momenta(),
+            cell=initial_atoms.get_cell().array,
+            numbers=initial_atoms.get_atomic_numbers(),
+        )
         rows, _ = run_condition(model, "exact", args, seed, initial_atoms)
         all_rows.extend(rows)
         for tolerance in args.tolerances:
@@ -195,6 +221,10 @@ def run(args):
         "friction_per_fs": args.friction_per_fs,
         "tolerances_A": args.tolerances,
         "cache_mode": args.cache_mode,
+        "batched_action_chunk_size": args.batched_action_chunk_size,
+        "initial_state_artifacts": {
+            str(seed): str(out / f"initial_state_seed{seed}.npz") for seed in args.seeds
+        },
         "warmup_protocol": "one exact-MACE equilibration per seed; post-equilibration positions and momenta shared by all production arms",
         "reference_refresh": "dirty edges refreshed immediately before cached evaluation",
         "frame_metrics_sha256": hashlib.sha256((out / "frame_metrics.csv").read_bytes()).hexdigest(),

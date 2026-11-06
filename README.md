@@ -1,138 +1,293 @@
-# Frost edge caching: experiment workspace
+# Frost: temporal edge-message caching in MACE
 
-This repository studies when per-edge message reuse in MACE is accurate and whether the full cache path reduces end-to-end cost. The initial evidence is negative on integrated runtime and mixed on reuse versus force error. The experiments are designed to characterize those limits; a speedup is not assumed.
+Frost measures whether edge-local MACE message reuse is geometrically common,
+numerically accurate, and beneficial in complete inference/MD execution. A
+speedup is not assumed. Stage A measures geometry only; Stage B measures
+stale-cache error against exact MACE; W4/E4 measures fixed-configuration
+complete-calculator cost; W5/E5 measures matched-start MD rollout behavior.
 
-## Repository map
+## Repository
 
-| Path | Contents |
-|---|---|
-| `frost/e1/` | Reusable cache, geometry, MACE patch, trajectory, audit, and benchmark code |
-| `experiments/` | Campaign runner for repeated Stage A/B studies |
-| `configs/*.json` | Pilot, seed, temperature, tolerance, system-size and model matrices |
-| `docs/EXPERIMENT_ROADMAP.md` | Ordered study plan, evidence gates, and claim limits |
-| `docs/reference/` | Prior project reference PDFs |
-| `docs/archive/` | Prior plans and notes, kept for provenance |
-| `results/legacy_baseline/` | Existing result artifacts, preserved unchanged |
-| `results/active/` | New run outputs; ignored by Git by default |
-| `tests/` | Existing unit tests (not run as part of this edit) |
+- [`frost/e1/`](frost/e1): geometry, reference cache, MACE integration,
+  JVP/VJP actions, W0 audit, Stage A/B, W4/E4, and W5/E5.
+- [`experiments/run_campaign.py`](experiments/run_campaign.py): validated
+  Stage A -> W0 -> Stage B campaign runner with resume protection.
+- [`analysis/`](analysis): raw-result aggregation and figure generation.
+- [`configs/`](configs): smoke, pilot, generalization, temperature, scale,
+  W4/E4, and W5/E5 configurations.
+- [`results/legacy_baseline/`](results/legacy_baseline): preserved historical
+  artifacts. Never overwrite.
+- [`results/active/`](results/active): new unique experiment outputs.
+- [`docs/EXPERIMENT_ROADMAP.md`](docs/EXPERIMENT_ROADMAP.md): scientific gates
+  and claim boundaries.
 
-## VM setup
+See [`docs/IMPLEMENTATION_REPORT.md`](docs/IMPLEMENTATION_REPORT.md),
+[`docs/RESULTS_SCHEMA.md`](docs/RESULTS_SCHEMA.md), and
+[`docs/EXPERIMENT_PROTOCOL.md`](docs/EXPERIMENT_PROTOCOL.md).
 
-Use Python 3.10+ on the GPU VM. Install a PyTorch build compatible with that VM's CUDA driver, then install MACE and this package. The correct PyTorch wheel depends on the VM; do not copy the workstation's CUDA wheel blindly.
+## Installation on the GPU VM
+
+Do not run production experiments on a workstation or without checking the
+CUDA/PyTorch compatibility of the VM.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-# Install the CUDA-compatible PyTorch build for this VM, then:
+# Install the PyTorch wheel appropriate for the VM's CUDA driver.
 python -m pip install mace-torch
 python -m pip install -e .
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
-Check that `python -c "import torch; print(torch.cuda.is_available())"` reports `True` before a production run. MACE-MP-0 may download its checkpoint on first use; arrange network access or the corresponding cache on the VM.
+MACE-MP-0 may download its checkpoint on first use. Ensure the VM can access
+the checkpoint or has a populated local cache.
 
-## Recommended execution order
+## Execution order
 
-Run from the repository root. Give each launch a fresh output directory; tools refuse to overwrite non-empty directories. The campaign's `all` stage executes Stage A, runs W0 audits for each case, stops if the audit fails, and only then starts Stage B.
+Every command below is intended to run from the repository root. Each output
+directory must be new or be resumed with the exact same configuration.
 
-### 1. Reproduce independent 300 K trajectories and sparse accuracy frontiers
+### P0. CPU checks and GPU smoke test
 
-First run the small pipeline pilot on the GPU VM. It exercises Stage A, the W0 gate, and both Stage-B modes with five snapshots:
+The unit suite is fast and does not run MD:
 
 ```bash
-python experiments/run_campaign.py --config configs/pilot.json --stage all
+python -m pytest -q
+python -m compileall -q frost experiments analysis
 ```
 
-If that completes and the generated `results/active/pilot/.../w0_audit/summary.json` reports `"audit_passed": true`, proceed to the larger campaigns below.
-
-The checked-in campaign config runs seeds 42, 43, and 44 for 1000 production steps, then evaluates 50 time-stratified snapshots at seven tolerances using zeroth- and first-order reuse.
+The smoke campaign is non-publication validation only:
 
 ```bash
-python experiments/run_campaign.py --config configs/generalization.json --stage all
+python experiments/run_campaign.py \
+  --config configs/smoke.json --stage all
 ```
 
-After the primary 64-atom study, use the separate scale config for the 64/216/512-atom size comparison:
+The campaign runs Stage A, then W0, and stops before Stage B if W0 fails.
+Inspect:
 
 ```bash
-python experiments/run_campaign.py --config configs/scale.json --stage all
+cat results/active/smoke/diamond_si_T300_seed42/w0_audit/audit_summary.json
+cat results/active/smoke/diamond_si_T300_seed42/w0_audit/audit_checks.csv
 ```
 
-The 100/300/600 K extension with three seeds per temperature is in `configs/temperature.json`:
+### P0. W0 scientific correctness audit
 
-```bash
-python experiments/run_campaign.py --config configs/temperature.json --stage all
-```
+W0 compares exact, disabled, all-dirty, zeroth-order, serial first-order,
+batched first-order, and all-clean diagnostic arms. It writes
+`audit_summary.json`, `audit_checks.csv`, `message_errors.csv`,
+`force_errors.csv`, `audit.log`, and `metadata.json`.
 
-For a smaller smoke-sized GPU run, copy the JSON config to a new file and reduce `seeds`, `production_steps`, `accuracy_sample_count`, and `tolerances_A`; do not label that output as paper evidence. The campaign writes one Stage A trajectory and CSV per system/temperature/seed, then separate Stage B outputs per cache mode. To resume Stage B after Stage A has completed:
-
-```bash
-python experiments/run_campaign.py --config configs/generalization.json --stage stage-b
-```
-
-### 2. Audit the message substitution path before interpreting cache accuracy
-
-Use a trajectory from Stage A. The audit compares exact and actually substituted per-edge messages on clean and dirty edges, checks separate captured storage, and perturbs one atom by controlled displacements. It includes exact, disabled, threshold zeroth-order, serial first-order, batched first-order, and intentionally all-clean diagnostic arms.
+Run it on a saved Stage-A trajectory:
 
 ```bash
 python -m frost.e1.e3_audit \
-  --trajectory results/active/generalization/diamond_si_T300_seed42/stage_a/trajectory.traj \
-  --step 100 --tolerances 0.005 0.01 --output-dir results/active/w0_audit_seed42
+  --trajectory results/active/smoke/diamond_si_T300_seed42/stage_a/trajectory.traj \
+  --step 0 --tolerances 0.005 0.01 \
+  --output-dir results/active/w0_smoke
 ```
 
-Treat the deliberately all-clean arm as a failure-revealing diagnostic, not a valid cache policy. Zeroth-order message substitution preserves message values but drops the position derivative through reused messages, so its zero-displacement force error is expected and reported separately. The W0 force gate applies to exact, disabled-cache, serial first-order, and batched first-order paths. Review `audit.csv`, `summary.json`, dirty-edge exactness, and finite outputs before interpreting the frontier.
+The command returns nonzero on mandatory failure. Do not interpret Stage B
+results if `audit_summary.json` has `"audit_passed": false`.
 
-### 3. Summarize accuracy and uncertainty
+### P1. Core reuse/accuracy frontier
 
-Stage B emits per-snapshot exact-versus-Frost energy and force errors. Summarize temporal dependence with a block bootstrap:
+Run the pilot first:
+
+```bash
+python experiments/run_campaign.py \
+  --config configs/pilot.json --stage all
+```
+
+Then run the required 50-snapshot, seven-tolerance, three-seed campaign:
+
+```bash
+python experiments/run_campaign.py \
+  --config configs/generalization.json --stage all
+```
+
+The primary config evaluates zeroth-order, serial first-order (Mode 3), and
+batched first-order (Mode 4). Stage B records clean/dirty counts, reference
+age, RMS/mean/max force errors, P95/P99 per-atom errors, energy errors,
+message errors, finiteness, timing, and memory.
+
+To resume only completed stages:
+
+```bash
+python experiments/run_campaign.py \
+  --config configs/generalization.json --stage all --resume
+```
+
+The runner refuses partial non-empty output directories and mismatched resume
+configurations.
+
+### P1. Mode 3/Mode 4 and chunk validation
+
+Use the same Stage-A trajectory, snapshots, tolerances, and output roots for
+both modes:
+
+```bash
+python -m frost.e1.stage_b_accuracy_sampling \
+  --input results/active/pilot/diamond_si_T300_seed42/stage_a/per_timestep.csv \
+  --trajectory results/active/pilot/diamond_si_T300_seed42/stage_a/trajectory.traj \
+  --sample-count 5 --tolerances 0.005,0.01 \
+  --cache-mode 3 --output-dir results/active/pilot/stage_b_mode3
+
+for chunk in 64 128 256 512 1024; do
+  python -m frost.e1.stage_b_accuracy_sampling \
+    --input results/active/pilot/diamond_si_T300_seed42/stage_a/per_timestep.csv \
+    --trajectory results/active/pilot/diamond_si_T300_seed42/stage_a/trajectory.traj \
+    --sample-count 5 --tolerances 0.005,0.01 \
+    --cache-mode 4 --batched-action-chunk-size "$chunk" \
+    --output-dir "results/active/pilot/stage_b_mode4_chunk${chunk}"
+done
+```
+
+Mode 2 is a dense-Jacobian validation oracle only:
+
+```bash
+python -m frost.e1.stage_b_accuracy_sampling \
+  --input results/active/pilot/diamond_si_T300_seed42/stage_a/per_timestep.csv \
+  --trajectory results/active/pilot/diamond_si_T300_seed42/stage_a/trajectory.traj \
+  --sample-count 5 --tolerances 0.005,0.01 --cache-mode 2 \
+  --jacobian-chunk-size 64 \
+  --output-dir results/active/pilot/stage_b_dense_oracle
+```
+
+### P1. Frontier statistics and edge-level analysis
+
+Block bootstrap one trajectory at a time:
 
 ```bash
 python -m frost.e1.frontier_analysis \
-  --input results/active/generalization/diamond_si_T300_seed42/stage_b_mode3/accuracy_results.csv \
-  --block-length 10 --draws 5000 --output-dir results/active/frontier_seed42_mode3
+  --input results/active/generalization/diamond_si_T300_seed42/stage_b_mode4/accuracy_results.csv \
+  --block-length 10 --draws 5000 \
+  --output-dir results/active/frontier_seed42_mode4
 ```
 
-Bootstrap intervals over one trajectory do not replace independent seeds. Report per-trajectory results and use the independent trajectories as the replication unit in the paper.
+W0 now produces an instrumented per-edge `message_errors.csv` containing
+`edge_displacement_A`, `reference_age_steps`, and `message_error`. Aggregate
+Stage-B CSVs are rejected rather than expanded into fabricated edge rows:
 
-### 4. Measure full-calculator cost at fixed configurations
+```bash
+python -m frost.e1.edge_error_analysis \
+  --input results/active/w0_smoke/message_errors.csv \
+  --output-dir results/active/w0_smoke/edge_error
+```
 
-This benchmark uses saved frames, at least 10 warmups, at least 100 timed evaluations, 3 repeats, and CUDA synchronization around every complete calculator evaluation. It contrasts exact MACE, disabled reuse, dirty-only work, 0/25/50/75/100% clean-message reuse, and first-order cache paths. It records host-side cache component timing slices and peak allocated CUDA memory; use synchronized full-calculator wall time for performance comparisons.
+### P1. E4/W4 fixed-configuration performance
+
+Run only after P0 correctness and core accuracy:
 
 ```bash
 python -m frost.e1.inference_benchmark \
   --trajectory results/active/generalization/diamond_si_T300_seed42/stage_a/trajectory.traj \
-  --steps 50 250 500 750 950 --n-frames 5 --warmup 10 --evaluations 100 --repeats 3 \
+  --steps 50 250 500 750 950 --n-frames 5 \
+  --warmup 10 --evaluations 100 --repeats 3 \
+  --cache-mode 4 --batched-action-chunk-size 256 \
   --output-dir results/active/w4_inference_seed42
 ```
 
-This isolates repeated inference at fixed configurations; it is not an MD rollout timing. Report `timings.csv` distributions and compare with complete MD timings from `frost.e1.end_to_end_benchmark` only when both methods use the same saved starting state and measured scope.
+This includes exact, disabled, all-dirty, controlled 0/25/50/75/100%,
+natural threshold, serial first-order, and batched first-order arms. It
+records synchronized full-calculator timing, diagnostic component timing,
+peak allocated/reserved CUDA memory, and `cost_components.csv`.
 
-For a batched Stage-B derivative alternative, run the same pilot snapshots with `--cache-mode 2`. This uses chunked `vmap(jacrev)` Jacobians and tensor contractions instead of per-edge JVP/VJP closures. Compare accuracy with mode 3, compare `total_stage_b_runtime_seconds` and `peak_cuda_allocated_bytes`, then sweep chunk sizes (64, 128, 256) in separate output directories. Keep the chunk size that improves runtime without changing the error results materially; the 49 GB card provides headroom for this experiment.
+Analyze the measured cost model:
 
-Mode 3 is the serial per-edge JVP/VJP implementation. Mode 4 batches JVP and VJP actions with `vmap` without storing a dense Jacobian. To benchmark it on the same pilot frames, use `--cache-mode 4 --batched-action-chunk-size 256` and a fresh output directory, then compare its per-frame force/energy errors and runtime with mode 3. The paper benchmark also accepts `--cache-mode 4` for matched-start MD timing.
+```bash
+python -m frost.e1.cost_model_analysis \
+  --input results/active/w4_inference_seed42/cost_components.csv \
+  --output results/active/w4_inference_seed42/cost_model.csv
+```
 
-### 5. Compare longer exact and cached MD rollouts
+Full-calculator time is the primary result. Component times must not be added
+when they overlap.
 
-The paper benchmark equilibrates once with exact MACE and copies the same positions and momenta into each production arm. It records synchronized complete-step wall time, exact force checks on produced frames, cache metrics, and the initial-state hash.
+### P2. E5/W5 matched-start MD rollout
+
+Run a short rollout before a long rollout:
 
 ```bash
 python -m frost.e1.paper_benchmark \
-  --structure diamond_si --temperature 300 --seeds 42 137 271 \
-  --warmup-steps 100 --production-steps 500 \
+  --model mace-mp-0 --device cuda --dtype float64 \
+  --structure diamond_si --temperature 300 \
+  --seeds 42 --warmup-steps 10 --production-steps 25 \
+  --cache-mode 4 --batched-action-chunk-size 256 \
+  --tolerances 0.005 0.01 \
+  --output-dir results/active/w5_rollout_smoke
+```
+
+Then run the required matched-start independent-seed rollout:
+
+```bash
+python -m frost.e1.paper_benchmark \
+  --model mace-mp-0 --device cuda --dtype float64 \
+  --structure diamond_si --temperature 300 \
+  --seeds 42 137 271 --warmup-steps 100 --production-steps 500 \
+  --cache-mode 4 --batched-action-chunk-size 256 \
   --tolerances 0.005 0.01 0.02 \
   --output-dir results/active/w5_rollouts
 ```
 
-This gives three stochastic realizations at the selected temperature. For any higher-temperature or second-material rollout, first confirm exact-MACE stability and use a separate output directory.
+The output includes matched initial-state `.npz` artifacts and hashes,
+per-step/cumulative time, temperature, kinetic/potential/total energy, energy
+drift, reuse, reference age, exact-force checks, and finiteness. Do not claim
+long-time trajectory identity; compare distributions and same-configuration
+force accuracy.
 
-## Scope and interpretation
+### P2. Generalization
 
-- Stage A measures geometry reuse only. Its clean fraction is not a force-accuracy or runtime result.
-- Stage B evaluates sampled frames against exact MACE. Use temporal blocks and independent trajectories when reporting uncertainty.
-- Current trained/model coverage is centered on MACE-MP-0 and the available ASE systems. Generalization across materials requires validating that the selected pretrained model is stable and chemically appropriate first.
-- The edge-cache path includes Python, geometry, cache management, and derivative-action overhead. Report whole-calculator and whole-trajectory timings, not only the replaced layer operation.
-- Keep model/checkpoint identity, commit, Python/PyTorch/CUDA/GPU, seed, structure, temperature, dtype, tolerance, and initial-state provenance with every result.
-- Do not claim universal slowdown, universal cache failure, or generalization from the pilot. The intended paper is a careful characterization of where geometric reuse does and does not translate into accurate, useful acceleration.
+Temperature (100/300/600 K, independent seeds):
 
-## Existing results
+```bash
+python experiments/run_campaign.py \
+  --config configs/temperature.json --stage all
+```
 
-Previously generated files are under `results/legacy_baseline/`. They remain available for comparison, but new runs go to `results/active/` and are not committed by default. Never merge results from different timing scopes into a single speedup statistic.
+System-size scaling (64/216/512 atoms):
+
+```bash
+python experiments/run_campaign.py \
+  --config configs/scale.json --stage all
+```
+
+### P3. Evidence summaries and figures
+
+These commands only read completed raw results. Missing experiments remain
+missing and cause the corresponding summarizer to fail rather than fabricate
+rows:
+
+```bash
+python -m analysis.summarize_stage_a
+python -m analysis.summarize_frontier
+python -m analysis.summarize_generalization
+python -m analysis.summarize_inference_benchmark
+python -m analysis.summarize_rollout
+python -m analysis.generate_paper_figures
+```
+
+Outputs belong under:
+
+```text
+results/active/paper_evidence/
+  stage_a_summary.csv
+  frontier_summary.csv
+  generalization_summary.json
+  inference_cost_summary.json
+  rollout_summary.json
+  figures/
+  tables/
+```
+
+## Scientific constraints
+
+- W0 is an acceptance gate, not a descriptive afterthought.
+- Stage A clean fraction is a geometric upper bound, not force accuracy.
+- All-clean and controlled clean-fraction arms are diagnostic controls.
+- Exact-vs-cache error is not model-vs-DFT error.
+- Independent trajectories are replication units; snapshots are correlated.
+- Never overwrite `results/legacy_baseline/` or a successful active run.
+- Do not claim measured speedups, break-even points, or generalization until
+  the corresponding GPU outputs exist and pass validation.

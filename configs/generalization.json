@@ -1,4 +1,8 @@
 {
+  "experiment_name": "independent_trajectory_generalization",
+  "cache_policy": "threshold",
+  "reference_update_policy": "refresh_dirty_edges",
+  "jvp_vjp_mode": "mode4_preferred",
   "model": "mace-mp-0",
   "device": "cuda",
   "dtype": "float64",
@@ -11,7 +15,9 @@
   "friction_per_fs": 0.01,
   "tolerances_A": [0.002, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05],
   "accuracy_sample_count": 50,
-  "accuracy_cache_modes": [1, 2],
+  "accuracy_cache_modes": [1, 3, 4],
+  "batched_action_chunk_size": 256,
   "jacobian_chunk_size": 256,
+  "sampling": "time_stratified",
   "output_root": "results/active/generalization"
 }

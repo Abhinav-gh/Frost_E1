@@ -21,6 +21,7 @@ from ase.io import Trajectory as ASETrajectory
 
 from frost.e1.geometry import build_edge_geometry_from_ase
 from frost.e1.model_interface import load_model
+from frost.e1.metadata import capture_environment
 from frost.e1.reference_cache import PerEdgeReferenceCache
 from frost.e1.systems import build_system
 from frost.e1.trajectory import run_md_trajectory
@@ -128,6 +129,12 @@ def run(args):
                     "p95_delta_r": percentile(edge_delta, 95),
                     "p99_delta_r": percentile(edge_delta, 99),
                     "max_delta_r": float(np.max(edge_delta)) if edge_delta else 0.0,
+                    "mean_reference_age": float(np.mean([
+                        entry.age for entry in caches[eps]._entries.values()
+                    ])) if caches[eps]._entries else 0.0,
+                    "max_reference_age": max(
+                        (entry.age for entry in caches[eps]._entries.values()), default=0
+                    ),
                     "generation_max": max(stats["generation_by_key"].values(), default=0),
                 }
             )
@@ -178,6 +185,8 @@ def run(args):
         "p95_delta_r",
         "p99_delta_r",
         "max_delta_r",
+        "mean_reference_age",
+        "max_reference_age",
         "generation_max",
     ]
 
@@ -230,8 +239,42 @@ def run(args):
         "theta_status": "not measured; clean fraction is a geometric reuse upper bound only",
         "force_status": "Stage A does not compute exact-vs-Frost force errors",
         "trajectory_path": str(trajectory_path),
+        "environment": capture_environment(Path(__file__).resolve().parents[2]),
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    (output_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "stage": "A",
+                "model": model_name,
+                "device": model.device,
+                "dtype": dtype,
+                "structure": structure,
+                "system_size_atoms": len(atoms),
+                "temperature_K": temperature,
+                "seed": args.seed,
+                "tolerances_A": tolerances,
+                "production_initial_positions_and_momenta_sha256": production_initial_state.get(
+                    "positions_and_momenta_sha256"
+                ),
+                "git_commit": summary["git_commit"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    with (output_dir / "reuse_summary.csv").open("w", newline="", encoding="utf-8") as handle:
+        fields = [
+            "tolerance_A", "mean_phi", "median_phi", "p90_phi", "p95_phi",
+            "max_phi", "mean_clean_fraction", "fraction_steps_with_edge_churn",
+        ]
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(summaries)
+    (output_dir / "run.log").write_text(
+        f"stage=A\nrows={len(rows)}\nproduction_wall_seconds={production_seconds:.6f}\n",
+        encoding="utf-8",
+    )
     write_plot(rows, output_dir)
     debug_print(args, f"Stage A complete: wrote {len(rows)} step/tolerance rows to {output_dir}")
     print(json.dumps(summary, indent=2))

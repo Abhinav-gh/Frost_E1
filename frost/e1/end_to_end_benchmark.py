@@ -159,6 +159,15 @@ class IntegratedFrostCalculator(Calculator):
         finally:
             current_atoms.calc = original_calc
         model_evaluation_seconds = time.perf_counter() - evaluation_start
+        if audit_capture is not None:
+            audit_capture["edge_keys"] = list(current_keys)
+            audit_capture["edge_displacement_A"] = np.asarray([
+                float(np.linalg.norm(edges[key]["r_ij"] - self.cache._entries[key].ref_r_ij))
+                for key in current_keys
+            ])
+            audit_capture["reference_age_steps"] = np.asarray([
+                int(self.cache._entries[key].age) for key in current_keys
+            ])
 
         elapsed = time.perf_counter() - wall_start
         self.last_frost_energy = float(frost_energy)
@@ -188,6 +197,9 @@ class IntegratedFrostCalculator(Calculator):
                 "edge_mapping_matched": bool(mapping["matched"]),
                 "max_reference_generation": max(
                     (entry.generation for entry in self.cache._entries.values()), default=0
+                ),
+                "max_reference_age_steps": max(
+                    (entry.age for entry in self.cache._entries.values()), default=0
                 ),
                 "reference_action_edges": int(clean_mask.sum().item()),
                 "action_mode": self.cache_mode,
@@ -375,8 +387,10 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-steps", type=int, default=2)
     parser.add_argument("--timed-steps", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--batched-action-chunk-size", type=int, default=1024)
+    parser.add_argument("--jacobian-chunk-size", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=300.0)
     parser.add_argument("--tolerance-A", type=float, default=0.01)
-    parser.add_argument("--cache-mode", type=int, choices=[1, 3, 4], default=3)
+    parser.add_argument("--cache-mode", type=int, choices=[1, 3, 4], default=4)
     parser.add_argument("--output-dir", default="results/active/end_to_end_frost_short")
     run(parser.parse_args())

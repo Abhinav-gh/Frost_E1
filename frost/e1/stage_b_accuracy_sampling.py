@@ -416,7 +416,8 @@ def run(args):
                         model, reference_atoms, reference_edges.keys(), batched_cache,
                         batched_node_attrs, reference_step, requested_keys=requested_keys,
                     )
-                else:
+                else:   
+                    # serial run of JVP/VJP which is mode 3 or mode 1 (zeroth-order)
                     reference_by_timestep[reference_step] = _keyed_action_reference(
                         model, reference_atoms, reference_edges.keys(), action_cache,
                         reference_step, with_actions=(cache_mode == 3),
@@ -471,7 +472,7 @@ def run(args):
                     "source_features": source_features_reference,
                     "edge_indices": edge_indices_reference,
                     "node_attrs": node_attrs_reference,
-                    "chunk_size": getattr(args, "batched_action_chunk_size", 256),
+                    "chunk_size": getattr(args, "batched_action_chunk_size", 1024),
                 }
             frost_energy, frost_forces = compute_cached_forces(
                 atoms,
@@ -501,9 +502,11 @@ def run(args):
                     "exact_energy_eV": float(exact_energy),
                     "frost_energy_eV": float(frost_energy),
                     "energy_error_eV": abs(float(frost_energy - exact_energy)),
+                    "energy_error_per_atom_eV": abs(float(frost_energy - exact_energy)) / max(len(atoms), 1),
                     "force_max_error_meV_A": float(force_norms.max()),
                     "force_mean_error_meV_A": float(force_norms.mean()),
                     "force_rms_error_meV_A": float(np.sqrt(np.mean(force_delta ** 2)) * 1000.0),
+                    "force_atom_p90_error_meV_A": float(np.percentile(force_norms, 90)),
                     "force_atom_p95_error_meV_A": float(np.percentile(force_norms, 95)),
                     "force_atom_p99_error_meV_A": float(np.percentile(force_norms, 99)),
                     "edge_message_clean_rms": float(np.sqrt(np.mean(message_delta[clean_cpu] ** 2))) if clean_cpu.any() else 0.0,
@@ -564,10 +567,12 @@ def run(args):
                     "max": float(np.max([row["n_clean"] / row["n_edges"] for row in tolerance_rows])),
                 },
                 "energy_error_eV": distribution("energy_error_eV"),
+                "energy_error_per_atom_eV": distribution("energy_error_per_atom_eV"),
                 "force_rms_error_meV_A": distribution("force_rms_error_meV_A"),
                 "force_max_error_meV_A": distribution("force_max_error_meV_A"),
                 "force_atom_p95_error_meV_A": distribution("force_atom_p95_error_meV_A"),
                 "force_atom_p99_error_meV_A": distribution("force_atom_p99_error_meV_A"),
+                "force_atom_p90_error_meV_A": distribution("force_atom_p90_error_meV_A"),
                 "edge_message_clean_rms": distribution("edge_message_clean_rms"),
                 "edge_message_clean_max": distribution("edge_message_clean_max"),
                 "edge_message_dirty_max": distribution("edge_message_dirty_max"),
@@ -582,6 +587,21 @@ def run(args):
             }
         )
 
+    budgets = {}
+    for budget in (5.0, 10.0, 20.0):
+        eligible = [
+            row for row in result_rows
+            if row["force_max_error_meV_A"] <= budget
+        ]
+        budgets[str(budget)] = {
+            "budget_meV_A": budget,
+            "largest_observed_clean_fraction": max(
+                (row["n_clean"] / max(row["n_edges"], 1) for row in eligible),
+                default=None,
+            ),
+            "eligible_rows": len(eligible),
+            "criterion": "maximum force error, not mean or RMS",
+        }
     summary = {
         "stage": "B",
         "input_csv": str(input_path),
@@ -593,7 +613,7 @@ def run(args):
         "reference_configuration_count": len(reference_cache),
         "dense_jacobian_enabled": cache_mode == 2,
         "jacobian_chunk_size": getattr(args, "jacobian_chunk_size", 64) if cache_mode == 2 else None,
-        "batched_action_chunk_size": getattr(args, "batched_action_chunk_size", 256) if cache_mode == 4 else None,
+        "batched_action_chunk_size": getattr(args, "batched_action_chunk_size", 1024) if cache_mode == 4 else None,
         "peak_cuda_allocated_bytes": peak_cuda_allocated_bytes,
         "cache_mode": cache_mode,
         "action_evaluation_seconds": action_seconds,
@@ -606,6 +626,7 @@ def run(args):
         "dtype": getattr(args, "dtype", "float64"),
         "accuracy_results_csv": str(output_dir / "accuracy_results.csv"),
         "summaries_by_tolerance": grouped,
+        "force_error_budgets": budgets,
         "force_error_executed": True,
         "all_finite": bool(all(row["finite"] for row in result_rows)),
         "selected_rows": result_rows,
@@ -646,7 +667,7 @@ if __name__ == "__main__":
                         help="1=zeroth-order; 2=chunked dense Jacobian; 3=serial JVP/VJP; 4=batched JVP/VJP")
     parser.add_argument("--jacobian-chunk-size", type=int, default=64,
                         help="Edges per vectorized dense-Jacobian chunk when --cache-mode 2 is used")
-    parser.add_argument("--batched-action-chunk-size", type=int, default=256,
+    parser.add_argument("--batched-action-chunk-size", type=int, default=1024,
                         help="Edges per batched JVP/VJP chunk when --cache-mode 4 is used")
     parser.add_argument("--output-dir", default="results/active/stage_b")
     parser.add_argument("--debug", action="store_true", help="Print concise Stage-B progress messages")

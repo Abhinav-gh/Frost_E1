@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ from ase.io import read
 from frost.e1.end_to_end_benchmark import IntegratedFrostCalculator
 from frost.e1.force_error import compute_exact_forces
 from frost.e1.model_interface import load_model
+from frost.e1.metadata import capture_environment
 
 
 def run(args):
@@ -23,7 +25,9 @@ def run(args):
     frames = read(args.trajectory, index=":")
     frame = frames[args.step]
     model = load_model(args.model, device=args.device, dtype=args.dtype)
+    started = time.time()
     rows = []
+    edge_rows = []
     controls = [("exact_mode_path_control", 0, "disabled"), ("reuse_disabled", 1, "disabled"),
                 ("zeroth_threshold", 1, "threshold"), ("first_threshold", 3, "threshold"),
                 ("batched_first_threshold", 4, "threshold"),
@@ -55,6 +59,24 @@ def run(args):
                 clean = audit.get("clean_mask", np.zeros(0, dtype=bool))
                 if exact_msg is not None and used_msg is not None and len(clean) == len(exact_msg):
                     msg_error = np.linalg.norm(used_msg - exact_msg, axis=1)
+                    edge_displacements = audit.get(
+                        "edge_displacement_A", np.full(len(msg_error), np.nan)
+                    )
+                    edge_ages = audit.get(
+                        "reference_age_steps", np.full(len(msg_error), np.nan)
+                    )
+                    for edge_index, error in enumerate(msg_error):
+                        edge_rows.append({
+                            "step": args.step,
+                            "tolerance_A": tolerance,
+                            "arm": arm,
+                            "displacement_A": displacement,
+                            "edge_index": edge_index,
+                            "edge_displacement_A": float(edge_displacements[edge_index]),
+                            "reference_age_steps": float(edge_ages[edge_index]),
+                            "clean": bool(clean[edge_index]),
+                            "message_error": float(error),
+                        })
                     clean_rms = float(np.sqrt(np.mean(msg_error[clean] ** 2))) if clean.any() else 0.0
                     dirty_rms = float(np.sqrt(np.mean(msg_error[~clean] ** 2))) if (~clean).any() else 0.0
                     clean_max = float(msg_error[clean].max()) if clean.any() else 0.0
@@ -81,11 +103,17 @@ def run(args):
     force_control_arms = {"exact_mode_path_control", "reuse_disabled", "first_threshold", "batched_first_threshold"}
     validated_zero_rows = [r for r in zero_rows if r["arm"] in force_control_arms]
     zeroth_rows = [r for r in zero_rows if r["arm"] in {"zeroth_threshold", "all_message_reuse_diagnostic"}]
-    summary = {"experiment": "frost_w0_cache_path_audit", "trajectory": str(args.trajectory),
+    checks = [
+        ("all_finite", summary_all_finite := all(r["all_finite"] for r in rows), True),
+        ("storage_independence", summary_storage := all(r["message_storage_separate"] for r in rows), True),
+    ]
+    summary = {"experiment": "frost_w0_cache_path_audit", "test_name": "W0 integrated cache-path audit",
+               "trajectory": str(args.trajectory),
                "step": args.step, "tolerances_A": args.tolerances,
                "displacements_A": displacements, "n_rows": len(rows),
-               "all_finite": all(r["all_finite"] for r in rows),
-               "message_storage_separate": all(r["message_storage_separate"] for r in rows),
+               "n_edge_rows": len(edge_rows),
+               "all_finite": summary_all_finite,
+               "message_storage_separate": summary_storage,
                "zero_displacement_max_energy_error_eV": max(r["energy_error_eV"] for r in zero_rows),
                "zero_displacement_force_validation_arms": sorted(force_control_arms),
                "zero_displacement_max_force_rms_meV_A": max(r["force_rms_meV_A"] for r in validated_zero_rows),
@@ -95,8 +123,60 @@ def run(args):
         and summary["zero_displacement_max_energy_error_eV"] < 1e-8
         and summary["zero_displacement_max_force_rms_meV_A"] < 1e-5
         and summary["dirty_message_max_abs_error"] < 1e-10)
+    checks.extend([
+        ("zero_displacement_energy", summary["zero_displacement_max_energy_error_eV"] < 1e-8, 1e-8),
+        ("zero_displacement_force", summary["zero_displacement_max_force_rms_meV_A"] < 1e-5, 1e-5),
+        ("dirty_message_exactness", summary["dirty_message_max_abs_error"] < 1e-10, 1e-10),
+    ])
+    with (output / "audit_checks.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["check", "passed", "criterion"])
+        writer.writeheader()
+        writer.writerows({"check": name, "passed": passed, "criterion": criterion}
+                         for name, passed, criterion in checks)
+    with (output / "message_errors.csv").open("w", newline="", encoding="utf-8") as handle:
+        fields = ["step", "tolerance_A", "arm", "displacement_A", "edge_index",
+                  "edge_displacement_A", "reference_age_steps", "clean",
+                  "message_error"]
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(edge_rows)
+    with (output / "force_errors.csv").open("w", newline="", encoding="utf-8") as handle:
+        fields = ["step", "tolerance_A", "arm", "displacement_A",
+                  "energy_error_eV", "force_rms_meV_A", "force_max_meV_A", "all_finite"]
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows({field: row[field] for field in fields} for row in rows)
+    summary.update({
+        "pass": summary["audit_passed"],
+        "numerical_tolerances": {
+            "energy_eV": 1e-8, "force_rms_meV_A": 1e-5, "dirty_message": 1e-10,
+        },
+        "failure_reason": None if summary["audit_passed"] else "One or more mandatory W0 checks failed",
+        "configuration": vars(args),
+        "software": capture_environment(Path(__file__).resolve().parents[2]),
+        "execution_environment": {
+            "platform": platform.platform(),
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device": torch.cuda.get_device_name() if torch.cuda.is_available() else None,
+            "started_unix": started,
+            "duration_seconds": time.time() - started,
+        },
+    })
     (output / "summary.json").write_text(json.dumps(summary, indent=2))
+    (output / "audit_summary.json").write_text(json.dumps(summary, indent=2))
+    (output / "metadata.json").write_text(json.dumps({
+        "experiment": summary["experiment"], "test_name": summary["test_name"],
+        "configuration": vars(args), "software": summary["software"],
+        "execution_environment": summary["execution_environment"],
+    }, indent=2))
+    (output / "audit.log").write_text(
+        f"passed={summary['audit_passed']}\nrows={len(rows)}\n"
+        f"failure_reason={summary['failure_reason']}\n",
+        encoding="utf-8",
+    )
     print(json.dumps(summary, indent=2))
+    if not summary["audit_passed"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
