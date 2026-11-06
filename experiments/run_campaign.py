@@ -45,8 +45,14 @@ def run(args):
                         print("RUN", subprocess.list2cmdline(base), flush=True)
                         subprocess.run(base, cwd=ROOT, check=True)
 
-                    audit_dir = root / tag / "w0_audit"
+                    case_dir = root / tag
+                    audit_dir = case_dir / "w0_audit"
                     if args.stage in ("all", "audit"):
+                        if args.stage == "audit" and audit_dir.exists() and any(audit_dir.iterdir()):
+                            revision = 2
+                            while (case_dir / f"w0_audit_r{revision}").exists():
+                                revision += 1
+                            audit_dir = case_dir / f"w0_audit_r{revision}"
                         audit_cmd = [
                             sys.executable, "-m", "frost.e1.e3_audit",
                             "--trajectory", str(stage_a / "trajectory.traj"),
@@ -58,8 +64,11 @@ def run(args):
                         subprocess.run(audit_cmd, cwd=ROOT, check=True)
 
                     if args.stage in ("all", "stage-b"):
-                        manifest = audit_dir / "summary.json"
-                        if not manifest.exists() or not json.loads(manifest.read_text()).get("audit_passed", False):
+                        audit_candidates = [case_dir / "w0_audit", *sorted(case_dir.glob("w0_audit_r*"))]
+                        passed = [candidate for candidate in audit_candidates
+                                  if (candidate / "summary.json").exists()
+                                  and json.loads((candidate / "summary.json").read_text()).get("audit_passed", False)]
+                        if not passed:
                             raise RuntimeError(f"W0 audit is missing or failed for {tag}; stop before Stage B")
                         for mode in config["accuracy_cache_modes"]:
                             target = root / tag / f"stage_b_mode{mode}"

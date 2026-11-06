@@ -185,7 +185,7 @@ def run_trajectory(model, method, temperature, warmup_steps, timed_steps, seed, 
     if method == "exact":
         calculator = ExactCalculator(model)
     else:
-    calculator = IntegratedFrostCalculator(model, tolerance_A)
+        calculator = IntegratedFrostCalculator(model, tolerance_A)
     atoms.calc = calculator
     initialize_velocities(atoms, temperature, seed)
     dynamics = Langevin(

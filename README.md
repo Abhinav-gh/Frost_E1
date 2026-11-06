@@ -79,7 +79,7 @@ python -m frost.e1.e3_audit \
   --step 100 --tolerances 0.005 0.01 --output-dir results/active/w0_audit_seed42
 ```
 
-Treat the deliberately all-clean arm as a failure-revealing diagnostic, not a valid cache policy. Review `audit.csv` and confirm zero-displacement identity, dirty-edge exactness, message mapping, and finite outputs before interpreting the frontier.
+Treat the deliberately all-clean arm as a failure-revealing diagnostic, not a valid cache policy. Zeroth-order message substitution preserves message values but drops the position derivative through reused messages, so its zero-displacement force error is expected and reported separately. The W0 force gate applies to the exact path, disabled-cache path, and first-order path. Review `audit.csv`, `summary.json`, dirty-edge exactness, and finite outputs before interpreting the frontier.
 
 ### 3. Summarize accuracy and uncertainty
 

@@ -76,13 +76,19 @@ def run(args):
     fields = list(rows[0])
     with (output / "audit.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+    zero_rows = [r for r in rows if r["displacement_A"] == 0]
+    force_control_arms = {"exact_mode_path_control", "reuse_disabled", "first_threshold"}
+    validated_zero_rows = [r for r in zero_rows if r["arm"] in force_control_arms]
+    zeroth_rows = [r for r in zero_rows if r["arm"] in {"zeroth_threshold", "all_message_reuse_diagnostic"}]
     summary = {"experiment": "frost_w0_cache_path_audit", "trajectory": str(args.trajectory),
                "step": args.step, "tolerances_A": args.tolerances,
                "displacements_A": displacements, "n_rows": len(rows),
                "all_finite": all(r["all_finite"] for r in rows),
                "message_storage_separate": all(r["message_storage_separate"] for r in rows),
-               "zero_displacement_max_energy_error_eV": max(r["energy_error_eV"] for r in rows if r["displacement_A"] == 0),
-               "zero_displacement_max_force_rms_meV_A": max(r["force_rms_meV_A"] for r in rows if r["displacement_A"] == 0),
+               "zero_displacement_max_energy_error_eV": max(r["energy_error_eV"] for r in zero_rows),
+               "zero_displacement_force_validation_arms": sorted(force_control_arms),
+               "zero_displacement_max_force_rms_meV_A": max(r["force_rms_meV_A"] for r in validated_zero_rows),
+               "zeroth_order_zero_displacement_force_rms_meV_A": max(r["force_rms_meV_A"] for r in zeroth_rows),
                "dirty_message_max_abs_error": max((r["message_dirty_max"] for r in rows if r["n_dirty"] > 0), default=0.0)}
     summary["audit_passed"] = bool(summary["all_finite"] and summary["message_storage_separate"]
         and summary["zero_displacement_max_energy_error_eV"] < 1e-8
