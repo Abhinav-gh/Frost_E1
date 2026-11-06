@@ -46,6 +46,27 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
             if bool(clean_mask[edge]) else mji[edge]
             for edge in range(mji.shape[0])
         ])
+    elif mode == 4:
+        batched_action = state.get("batched_action")
+        vectors = state.get("vectors")
+        vectors_ref = state.get("vectors_ref")
+        if batched_action is None or vectors is None or vectors_ref is None:
+            raise ValueError("Batched JVP/VJP reuse requires batched_action and reference vectors")
+        clean_indices = torch.nonzero(clean_mask, as_tuple=False).flatten()
+        replacement = mji
+        if clean_indices.numel():
+            from frost.e1.force_error import _BatchedFirstOrderAction
+            clean_messages = _BatchedFirstOrderAction.apply(
+                vectors[clean_indices],
+                g_ref[clean_indices],
+                vectors_ref[clean_indices],
+                batched_action["source_features"][clean_indices],
+                batched_action["edge_indices"][clean_indices],
+                batched_action["node_attrs"],
+                batched_action["model"],
+                batched_action.get("chunk_size", 256),
+            )
+            replacement = mji.index_copy(0, clean_indices, clean_messages)
     else:
         raise ValueError(f"Unsupported Frost cache mode: {mode}")
     return torch.where(clean_mask[:, None], replacement, mji)

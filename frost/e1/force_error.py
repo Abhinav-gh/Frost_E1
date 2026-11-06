@@ -78,6 +78,90 @@ def make_first_order_edge_action(jvp_fn, vjp_fn):
     return action
 
 
+def _batched_edge_messages(model, vectors, source_features, edge_indices, node_attrs):
+    """Evaluate independent first-layer edge messages under one vmap."""
+    import torch
+    from torch.func import vmap
+
+    block = model.interactions[0]
+    atomic_numbers = model.atomic_numbers
+
+    def one_edge(vector, source_feature, edge_index):
+        vector = vector.reshape(1, 3)
+        edge_index = edge_index.reshape(2, 1)
+        edge_attrs = _eager_spherical_harmonics(vector, model.spherical_harmonics)
+        lengths = torch.linalg.vector_norm(vector, dim=-1, keepdim=True)
+        edge_feats, cutoff = model.radial_embedding(
+            lengths, node_attrs, edge_index, atomic_numbers
+        )
+        weights = block.conv_tp_weights(edge_feats)
+        if cutoff is not None:
+            weights = weights * cutoff
+        return block.conv_tp(source_feature.reshape(1, -1), edge_attrs, weights)[0]
+
+    return vmap(one_edge)(vectors, source_features, edge_indices)
+
+
+class _BatchedFirstOrderAction:
+    """Chunked batched JVP forward and VJP backward, without storing dense J."""
+
+    @staticmethod
+    def apply(current_vectors, g_ref, vectors_ref, source_features,
+              edge_indices, node_attrs, model, chunk_size=256):
+        import torch
+
+        class _Action(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, current, reference_message, reference_vector,
+                        sources, indices, attrs, model_obj, chunk):
+                import torch
+
+                ctx.model = model_obj
+                ctx.chunk_size = int(chunk)
+                ctx.save_for_backward(reference_vector, sources, indices, attrs)
+                outputs = []
+                for start in range(0, len(current), ctx.chunk_size):
+                    stop = min(start + ctx.chunk_size, len(current))
+                    reference = reference_vector[start:stop]
+                    delta = current[start:stop].detach() - reference.detach()
+                    source_chunk = sources[start:stop]
+                    index_chunk = indices[start:stop]
+                    message_fn = lambda vectors: _batched_edge_messages(
+                        model_obj, vectors, source_chunk, index_chunk, attrs
+                    )
+                    _, tangent = torch.func.jvp(
+                        message_fn, (reference,), (delta,)
+                    )
+                    outputs.append(reference_message[start:stop].detach() + tangent)
+                return torch.cat(outputs, dim=0)
+
+            @staticmethod
+            def backward(ctx, upstream):
+                import torch
+
+                reference_vector, sources, indices, attrs = ctx.saved_tensors
+                gradients = []
+                for start in range(0, len(reference_vector), ctx.chunk_size):
+                    stop = min(start + ctx.chunk_size, len(reference_vector))
+                    reference = reference_vector[start:stop]
+                    source_chunk = sources[start:stop]
+                    index_chunk = indices[start:stop]
+                    message_fn = lambda vectors: _batched_edge_messages(
+                        ctx.model, vectors, source_chunk, index_chunk, attrs
+                    )
+                    _, pullback = torch.func.vjp(message_fn, reference)
+                    (gradient,) = pullback(upstream[start:stop])
+                    gradients.append(gradient)
+                return torch.cat(gradients, dim=0), None, None, None, None, None, None, None
+
+        if chunk_size < 1:
+            raise ValueError("Batched JVP/VJP chunk size must be positive")
+        return _Action.apply(
+            current_vectors, g_ref, vectors_ref, source_features,
+            edge_indices, node_attrs, model, int(chunk_size)
+        )
+
+
 def _eager_spherical_harmonics(vector, spherical_harmonics):
     """Match e3nn's l<=3 basis without its scripted kernel boundary."""
     import torch
@@ -225,6 +309,7 @@ def extract_layer1_dense_jacobian(
         selected_edges = torch.as_tensor(edge_indices, dtype=torch.long, device=local["vectors"].device)
         if selected_edges.ndim != 1 or torch.any(selected_edges < 0) or torch.any(selected_edges >= edge_count):
             raise ValueError("edge_indices must be a one-dimensional list of valid edge indices")
+    limit = int(selected_edges.numel())
     vectors = local["vectors"][selected_edges].detach()
     edge_index = local["edge_index"][:, selected_edges]
     source_features = local["node_feats"][edge_index[0]].detach()
@@ -461,6 +546,7 @@ def compute_cached_forces(
     vectors=None,
     vectors_ref=None,
     action_fns=None,
+    batched_action=None,
     audit_capture: dict | None = None,
 ) -> Tuple[float, np.ndarray]:
     """Evaluate MACE on unchanged coordinates with edge-local interception."""
@@ -489,6 +575,14 @@ def compute_cached_forces(
             raise ValueError("JVP/VJP cache requires action_fns and vectors_ref")
         state.update({
             "action_fns": action_fns,
+            "vectors_ref": torch.as_tensor(vectors_ref),
+        })
+    elif mode == 4:
+        if batched_action is None or vectors is None or vectors_ref is None:
+            raise ValueError("Batched first-order reuse requires batched_action and vectors")
+        state.update({
+            "batched_action": batched_action,
+            "vectors": torch.as_tensor(vectors),
             "vectors_ref": torch.as_tensor(vectors_ref),
         })
     from frost.e1.mace_patch import capture_layer1_vectors

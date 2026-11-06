@@ -212,6 +212,44 @@ def _keyed_action_reference(model, atoms, expected_keys, action_cache, timestep,
     return cached
 
 
+def _keyed_batched_reference(model, atoms, expected_keys, batched_cache,
+                             node_attrs_cache, timestep, requested_keys=None):
+    """Retain only requested reference edge inputs for batched JVP/VJP mode."""
+    cached = batched_cache.setdefault(timestep, {})
+    requested = set(expected_keys if requested_keys is None else requested_keys)
+    missing = requested - set(cached)
+    if not missing:
+        return cached
+    local = extract_layer1_local_inputs(model, atoms)
+    keys = mace_edge_keys(local["edge_index"], local["unit_shifts"])
+    comparison = compare_edge_key_sets(expected_keys, keys)
+    if not comparison["matched"]:
+        raise RuntimeError(f"Stage-B edge mapping mismatch at batched reference step {timestep}: {comparison}")
+    indices = {key: index for index, key in enumerate(keys)}
+    if not missing.issubset(indices):
+        raise RuntimeError(f"Stage-B requested edge missing from batched reference timestep {timestep}")
+    missing_list = list(missing)
+    selected = torch.as_tensor(
+        [indices[key] for key in missing_list], dtype=torch.long,
+        device=local["edge_index"].device,
+    )
+    senders = local["edge_index"][0, selected]
+    sources = local["node_feats"][senders]
+    edge_indices = local["edge_index"][:, selected].T
+    keyed = {
+        key: {
+            "g": local["mji"][selected[position]].detach().clone(),
+            "vectors": local["vectors"][selected[position]].detach().clone(),
+            "source_features": sources[position].detach().clone(),
+            "edge_indices": edge_indices[position].detach().clone(),
+        }
+        for position, key in enumerate(missing_list)
+    }
+    node_attrs_cache[timestep] = local["node_attrs"].detach()
+    cached.update(keyed)
+    return cached
+
+
 def _reference_plan(selected_states, selected_steps, tolerances):
     pairs = set()
     per_frame = {}
@@ -313,8 +351,10 @@ def run(args):
         return
     action_cache = {}
     dense_cache = {}
+    batched_cache = {}
+    batched_node_attrs = {}
     cache_mode = getattr(args, "cache_mode", 3)
-    reference_cache = dense_cache if cache_mode == 2 else action_cache
+    reference_cache = {2: dense_cache, 3: action_cache, 4: batched_cache}.get(cache_mode, action_cache)
     result_rows = []
     exact_cache = {}
     action_reference_frames = 0
@@ -371,6 +411,11 @@ def run(args):
                         reference_step, chunk_size=getattr(args, "jacobian_chunk_size", 64),
                         requested_keys=requested_keys,
                     )
+                elif cache_mode == 4:
+                    reference_by_timestep[reference_step] = _keyed_batched_reference(
+                        model, reference_atoms, reference_edges.keys(), batched_cache,
+                        batched_node_attrs, reference_step, requested_keys=requested_keys,
+                    )
                 else:
                     reference_by_timestep[reference_step] = _keyed_action_reference(
                         model, reference_atoms, reference_edges.keys(), action_cache,
@@ -387,6 +432,13 @@ def run(args):
                 (len(current_keys), current_local["mji"].shape[1], 3),
                 dtype=current_vectors.dtype, device=current_vectors.device,
             ) if cache_mode == 2 else None)
+            source_features_reference = (torch.zeros(
+                (len(current_keys), current_local["node_feats"].shape[1]),
+                dtype=current_local["node_feats"].dtype, device=current_vectors.device,
+            ) if cache_mode == 4 else None)
+            edge_indices_reference = (torch.zeros(
+                (len(current_keys), 2), dtype=torch.long, device=current_vectors.device,
+            ) if cache_mode == 4 else None)
             reference_ages = []
             for key, entry in references.items():
                 index = current_by_key[key]
@@ -401,10 +453,26 @@ def run(args):
                     vectors_reference[index] = reference_values["vectors"]
                     if cache_mode == 2:
                         J_reference[index] = reference_values["J"]
+                    elif cache_mode == 4:
+                        source_features_reference[index] = reference_values["source_features"]
+                        edge_indices_reference[index] = reference_values["edge_indices"]
                     else:
                         action_fns[index] = reference_values["action"]
 
             message_audit = {}
+            batched_action = None
+            if cache_mode == 4:
+                if reference_timesteps:
+                    node_attrs_reference = batched_node_attrs[next(iter(reference_timesteps))]
+                else:
+                    node_attrs_reference = current_local["node_attrs"].detach()
+                batched_action = {
+                    "model": model.calculator.models[0],
+                    "source_features": source_features_reference,
+                    "edge_indices": edge_indices_reference,
+                    "node_attrs": node_attrs_reference,
+                    "chunk_size": getattr(args, "batched_action_chunk_size", 256),
+                }
             frost_energy, frost_forces = compute_cached_forces(
                 atoms,
                 model,
@@ -415,6 +483,7 @@ def run(args):
                 vectors=current_vectors,
                 vectors_ref=vectors_reference,
                 action_fns=action_fns,
+                batched_action=batched_action,
                 audit_capture=message_audit,
             )
             force_delta = np.asarray(frost_forces) - np.asarray(exact_forces)
@@ -524,6 +593,7 @@ def run(args):
         "reference_configuration_count": len(reference_cache),
         "dense_jacobian_enabled": cache_mode == 2,
         "jacobian_chunk_size": getattr(args, "jacobian_chunk_size", 64) if cache_mode == 2 else None,
+        "batched_action_chunk_size": getattr(args, "batched_action_chunk_size", 256) if cache_mode == 4 else None,
         "peak_cuda_allocated_bytes": peak_cuda_allocated_bytes,
         "cache_mode": cache_mode,
         "action_evaluation_seconds": action_seconds,
@@ -541,7 +611,8 @@ def run(args):
         "selected_rows": result_rows,
         "notes": (
             "Stage B evaluates exact MACE and the selected reuse mode only for sampled snapshots and required "
-            "references. Mode 2 uses chunked dense local Jacobians; modes 1 and 3 are zeroth-order and JVP/VJP."
+            "references. Modes 2 and 4 are batched first-order alternatives (dense Jacobian and JVP/VJP); "
+            "mode 3 is serial per-edge JVP/VJP."
         ),
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -571,10 +642,12 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--dtype", choices=["float32", "float64"], default="float64")
     parser.add_argument("--model", default="mace-mp-0")
-    parser.add_argument("--cache-mode", type=int, choices=[1, 2, 3], default=3,
-                        help="1=zeroth-order; 2=chunked dense Jacobian; 3=per-edge JVP/VJP")
+    parser.add_argument("--cache-mode", type=int, choices=[1, 2, 3, 4], default=3,
+                        help="1=zeroth-order; 2=chunked dense Jacobian; 3=serial JVP/VJP; 4=batched JVP/VJP")
     parser.add_argument("--jacobian-chunk-size", type=int, default=64,
                         help="Edges per vectorized dense-Jacobian chunk when --cache-mode 2 is used")
+    parser.add_argument("--batched-action-chunk-size", type=int, default=256,
+                        help="Edges per batched JVP/VJP chunk when --cache-mode 4 is used")
     parser.add_argument("--output-dir", default="results/active/stage_b")
     parser.add_argument("--debug", action="store_true", help="Print concise Stage-B progress messages")
     parser.add_argument("--plan-only", action="store_true", help="Replay cache geometry and report sparse derivative dependencies only")

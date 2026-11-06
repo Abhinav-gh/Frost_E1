@@ -26,6 +26,7 @@ def run(args):
     rows = []
     controls = [("exact_mode_path_control", 0, "disabled"), ("reuse_disabled", 1, "disabled"),
                 ("zeroth_threshold", 1, "threshold"), ("first_threshold", 3, "threshold"),
+                ("batched_first_threshold", 4, "threshold"),
                 ("all_message_reuse_diagnostic", 1, "all_clean")]
     displacements = [0.0, *args.displacements]
     for tolerance in args.tolerances:
@@ -77,7 +78,7 @@ def run(args):
     with (output / "audit.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
     zero_rows = [r for r in rows if r["displacement_A"] == 0]
-    force_control_arms = {"exact_mode_path_control", "reuse_disabled", "first_threshold"}
+    force_control_arms = {"exact_mode_path_control", "reuse_disabled", "first_threshold", "batched_first_threshold"}
     validated_zero_rows = [r for r in zero_rows if r["arm"] in force_control_arms]
     zeroth_rows = [r for r in zero_rows if r["arm"] in {"zeroth_threshold", "all_message_reuse_diagnostic"}]
     summary = {"experiment": "frost_w0_cache_path_audit", "trajectory": str(args.trajectory),

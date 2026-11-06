@@ -87,6 +87,11 @@ def run(args):
                                     "--jacobian-chunk-size",
                                     str(config.get("jacobian_chunk_size", 64)),
                                 ])
+                            elif mode == 4:
+                                stage_b_cmd.extend([
+                                    "--batched-action-chunk-size",
+                                    str(config.get("batched_action_chunk_size", 256)),
+                                ])
                             print("RUN", subprocess.list2cmdline(stage_b_cmd), flush=True)
                             subprocess.run(stage_b_cmd, cwd=ROOT, check=True)
 

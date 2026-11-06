@@ -38,8 +38,8 @@ class IntegratedFrostCalculator(Calculator):
         super().__init__()
         self.model = model
         self.tolerance_A = tolerance_A
-        if cache_mode not in (0, 1, 3):
-            raise ValueError("cache_mode must be 0 (exact), 1 (zeroth-order), or 3 (first-order JVP/VJP)")
+        if cache_mode not in (0, 1, 3, 4):
+            raise ValueError("cache_mode must be 0 (exact), 1 (zeroth-order), 3 (serial JVP/VJP), or 4 (batched JVP/VJP)")
         if cache_policy not in ("threshold", "disabled", "all_clean", "dirty_only", "fraction"):
             raise ValueError("unsupported cache_policy")
         if not 0.0 <= reuse_fraction <= 1.0:
@@ -47,6 +47,7 @@ class IntegratedFrostCalculator(Calculator):
         self.cache_mode = cache_mode
         self.cache_policy = cache_policy
         self.reuse_fraction = reuse_fraction
+        self.batched_action_chunk_size = 256
         self.audit_capture_enabled = audit_capture
         self.last_message_audit = None
         self.cache = PerEdgeReferenceCache([tolerance_A])
@@ -88,6 +89,13 @@ class IntegratedFrostCalculator(Calculator):
         g_reference = current_g.clone()
         vectors_reference = current_vectors.clone()
         action_fns = [None] * len(current_keys)
+        source_features_reference = (torch.zeros(
+            (len(current_keys), local["node_feats"].shape[1]),
+            dtype=local["node_feats"].dtype, device=current_vectors.device,
+        ) if self.cache_mode == 4 else None)
+        edge_indices_reference = (torch.zeros(
+            (len(current_keys), 2), dtype=torch.long, device=current_vectors.device,
+        ) if self.cache_mode == 4 else None)
 
         for key, index in current_by_key.items():
             entry = self.cache._entries[key]
@@ -95,12 +103,23 @@ class IntegratedFrostCalculator(Calculator):
             if refresh:
                 entry.g_ref = current_g[index].clone()
                 entry.vectors_ref = current_vectors[index].clone()
-                entry.action = make_layer1_edge_action(self.model, local, index) if self.cache_mode == 3 else None
+                if self.cache_mode == 3:
+                    entry.action = make_layer1_edge_action(self.model, local, index)
+                elif self.cache_mode == 4:
+                    sender = local["edge_index"][0, index]
+                    entry.source_features_ref = local["node_feats"][sender].detach().clone()
+                    entry.edge_indices_ref = local["edge_index"][:, index].detach().clone()
+                    entry.action = None
+                else:
+                    entry.action = None
             else:
                 clean_mask[index] = self.cache_mode != 0 and self.cache_policy != "disabled"
             g_reference[index] = entry.g_ref
             vectors_reference[index] = entry.vectors_ref
             action_fns[index] = entry.action
+            if self.cache_mode == 4:
+                source_features_reference[index] = entry.source_features_ref
+                edge_indices_reference[index] = entry.edge_indices_ref
 
         if self.cache_policy == "all_clean" and self.cache_mode != 0:
             clean_mask[:] = True
@@ -114,6 +133,15 @@ class IntegratedFrostCalculator(Calculator):
         cache_update_seconds = time.perf_counter() - cache_start
         original_calc = current_atoms.calc
         audit_capture = {} if self.audit_capture_enabled else None
+        batched_action = None
+        if self.cache_mode == 4:
+            batched_action = {
+                "model": self.model.calculator.models[0],
+                "source_features": source_features_reference,
+                "edge_indices": edge_indices_reference,
+                "node_attrs": local["node_attrs"].detach(),
+                "chunk_size": self.batched_action_chunk_size,
+            }
         evaluation_start = time.perf_counter()
         try:
             frost_energy, frost_forces = compute_cached_forces(
@@ -125,6 +153,7 @@ class IntegratedFrostCalculator(Calculator):
                 vectors=current_vectors,
                 vectors_ref=vectors_reference,
                 action_fns=action_fns,
+                batched_action=batched_action,
                 audit_capture=audit_capture,
             )
         finally:
@@ -180,12 +209,12 @@ class ExactCalculator(Calculator):
         self.results = {"energy": energy, "free_energy": energy, "forces": forces}
 
 
-def run_trajectory(model, method, temperature, warmup_steps, timed_steps, seed, tolerance_A=None):
+def run_trajectory(model, method, temperature, warmup_steps, timed_steps, seed, tolerance_A=None, cache_mode=3):
     atoms = build_system("diamond_si")
     if method == "exact":
         calculator = ExactCalculator(model)
     else:
-        calculator = IntegratedFrostCalculator(model, tolerance_A)
+        calculator = IntegratedFrostCalculator(model, tolerance_A, cache_mode=cache_mode)
     atoms.calc = calculator
     initialize_velocities(atoms, temperature, seed)
     dynamics = Langevin(
@@ -263,7 +292,7 @@ def run(args):
     output.mkdir(parents=True, exist_ok=True)
     model = load_model("mace-mp-0", device="cuda", dtype="float64")
     exact = run_trajectory(model, "exact", args.temperature, args.warmup_steps, args.timed_steps, args.seed)
-    frost = run_trajectory(model, "frost", args.temperature, args.warmup_steps, args.timed_steps, args.seed, args.tolerance_A)
+    frost = run_trajectory(model, "frost", args.temperature, args.warmup_steps, args.timed_steps, args.seed, args.tolerance_A, args.cache_mode)
 
     exact_times = [row["wall_seconds"] for row in exact["step_rows"]]
     frost_times = [row["wall_seconds"] for row in frost["step_rows"]]
@@ -280,7 +309,7 @@ def run(args):
         "timed_steps": args.timed_steps,
         "tolerance_A": args.tolerance_A,
         "dense_jacobian_enabled": False,
-        "frost_action_mode": 3,
+        "frost_action_mode": args.cache_mode,
         "frost_action_path_used": True,
         "exact": {
             "warmup_seconds": exact["warmup_seconds"],
@@ -348,5 +377,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--temperature", type=float, default=300.0)
     parser.add_argument("--tolerance-A", type=float, default=0.01)
+    parser.add_argument("--cache-mode", type=int, choices=[1, 3, 4], default=3)
     parser.add_argument("--output-dir", default="results/active/end_to_end_frost_short")
     run(parser.parse_args())

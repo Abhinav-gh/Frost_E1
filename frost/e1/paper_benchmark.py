@@ -71,6 +71,8 @@ def run_condition(model, method, args, seed, initial_atoms, tolerance=None):
     calc = TimedExactCalculator(model) if method == "exact" else IntegratedFrostCalculator(
         model, tolerance, cache_mode=args.cache_mode
     )
+    if method != "exact" and args.cache_mode == 4:
+        calc.batched_action_chunk_size = args.batched_action_chunk_size
     atoms.calc = calc
     np.random.seed(seed + 1000)
     dynamics = Langevin(
@@ -215,8 +217,9 @@ def main():
     parser.add_argument("--timestep-fs", type=float, default=1.0)
     parser.add_argument("--friction-per-fs", type=float, default=0.01)
     parser.add_argument("--tolerances", type=float, nargs="+", default=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05])
-    parser.add_argument("--cache-mode", type=int, choices=(1, 3), default=3,
-                        help="1=zeroth-order reuse; 3=first-order JVP/VJP reuse")
+    parser.add_argument("--cache-mode", type=int, choices=(1, 3, 4), default=3,
+                        help="1=zeroth-order; 3=serial JVP/VJP; 4=batched JVP/VJP")
+    parser.add_argument("--batched-action-chunk-size", type=int, default=256)
     parser.add_argument("--output-dir", default="results/active/paper_baseline")
     run(parser.parse_args())
 

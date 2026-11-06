@@ -51,6 +51,8 @@ class EdgeCacheEntry:
     refresh_count: int = 0
     g_ref: Optional[np.ndarray] = None
     J_ref: Optional[np.ndarray] = None
+    source_features_ref: Optional[object] = None
+    edge_indices_ref: Optional[object] = None
     lifetime_history: List[int] = field(default_factory=list)
 
     def refresh(self, r_ij: np.ndarray, d_ij: float, rhat_ij: np.ndarray, timestep: int) -> None:

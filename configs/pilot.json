@@ -11,6 +11,7 @@
   "friction_per_fs": 0.01,
   "tolerances_A": [0.005, 0.01],
   "accuracy_sample_count": 5,
-  "accuracy_cache_modes": [1, 3],
+  "accuracy_cache_modes": [1, 3, 4],
+  "batched_action_chunk_size": 256,
   "output_root": "results/active/pilot"
 }

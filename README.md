@@ -71,7 +71,7 @@ python experiments/run_campaign.py --config configs/generalization.json --stage 
 
 ### 2. Audit the message substitution path before interpreting cache accuracy
 
-Use a trajectory from Stage A. The audit compares exact and actually substituted per-edge messages on clean and dirty edges, checks separate captured storage, and perturbs one atom by controlled displacements. It includes exact, disabled, threshold zeroth-order, threshold first-order, and intentionally all-clean diagnostic arms.
+Use a trajectory from Stage A. The audit compares exact and actually substituted per-edge messages on clean and dirty edges, checks separate captured storage, and perturbs one atom by controlled displacements. It includes exact, disabled, threshold zeroth-order, serial first-order, batched first-order, and intentionally all-clean diagnostic arms.
 
 ```bash
 python -m frost.e1.e3_audit \
@@ -79,7 +79,7 @@ python -m frost.e1.e3_audit \
   --step 100 --tolerances 0.005 0.01 --output-dir results/active/w0_audit_seed42
 ```
 
-Treat the deliberately all-clean arm as a failure-revealing diagnostic, not a valid cache policy. Zeroth-order message substitution preserves message values but drops the position derivative through reused messages, so its zero-displacement force error is expected and reported separately. The W0 force gate applies to the exact path, disabled-cache path, and first-order path. Review `audit.csv`, `summary.json`, dirty-edge exactness, and finite outputs before interpreting the frontier.
+Treat the deliberately all-clean arm as a failure-revealing diagnostic, not a valid cache policy. Zeroth-order message substitution preserves message values but drops the position derivative through reused messages, so its zero-displacement force error is expected and reported separately. The W0 force gate applies to exact, disabled-cache, serial first-order, and batched first-order paths. Review `audit.csv`, `summary.json`, dirty-edge exactness, and finite outputs before interpreting the frontier.
 
 ### 3. Summarize accuracy and uncertainty
 
@@ -107,6 +107,8 @@ python -m frost.e1.inference_benchmark \
 This isolates repeated inference at fixed configurations; it is not an MD rollout timing. Report `timings.csv` distributions and compare with complete MD timings from `frost.e1.end_to_end_benchmark` only when both methods use the same saved starting state and measured scope.
 
 For a batched Stage-B derivative alternative, run the same pilot snapshots with `--cache-mode 2`. This uses chunked `vmap(jacrev)` Jacobians and tensor contractions instead of per-edge JVP/VJP closures. Compare accuracy with mode 3, compare `total_stage_b_runtime_seconds` and `peak_cuda_allocated_bytes`, then sweep chunk sizes (64, 128, 256) in separate output directories. Keep the chunk size that improves runtime without changing the error results materially; the 49 GB card provides headroom for this experiment.
+
+Mode 3 is the serial per-edge JVP/VJP implementation. Mode 4 batches JVP and VJP actions with `vmap` without storing a dense Jacobian. To benchmark it on the same pilot frames, use `--cache-mode 4 --batched-action-chunk-size 256` and a fresh output directory, then compare its per-frame force/energy errors and runtime with mode 3. The paper benchmark also accepts `--cache-mode 4` for matched-start MD timing.
 
 ### 5. Compare longer exact and cached MD rollouts
 
