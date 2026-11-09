@@ -12,6 +12,6 @@
   "friction_per_fs": 0.01,
   "tolerances_A": [0.005, 0.01, 0.02],
   "cache_mode": 4,
-  "batched_action_chunk_size": 256,
+  "batched_action_chunk_size": 1024,
   "output_root": "results/active/w5_rollouts"
 }

@@ -4,6 +4,7 @@ import argparse, csv, json, time, subprocess
 from pathlib import Path
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 from ase.io import read
 from frost.e1.end_to_end_benchmark import IntegratedFrostCalculator
 from frost.e1.model_interface import load_model
@@ -34,37 +35,48 @@ def run(args):
         ("frost_first_order_batched", args.cache_mode, "threshold", 1.0),
     ]
     rows=[]; component_rows=[]; memory_peaks={}
-    for frame_index, base in enumerate(frames):
-        for name, mode, policy, reuse_fraction in arms:
-            for repeat in range(args.repeats):
-                atoms=base.copy()
-                if name=="exact": atoms.calc=model.calculator
-                else:
-                    atoms.calc = IntegratedFrostCalculator(
-                        model, args.tolerance_A, cache_mode=mode,
-                        cache_policy=policy, reuse_fraction=reuse_fraction,
+    total_evaluations = len(frames) * len(arms) * args.repeats * args.evaluations
+    with tqdm(
+        total=total_evaluations,
+        desc="W4 evaluations",
+        unit="eval",
+        dynamic_ncols=True,
+    ) as progress:
+        for frame_index, base in enumerate(frames):
+            for name, mode, policy, reuse_fraction in arms:
+                for repeat in range(args.repeats):
+                    progress.set_description(
+                        f"W4 {name} frame={chosen_steps[frame_index]} repeat={repeat + 1}/{args.repeats}"
                     )
-                    atoms.calc.batched_action_chunk_size = args.batched_action_chunk_size
-                for _ in range(args.warmup):
-                    atoms.calc.results={}; atoms.get_forces(); sync(model.device)
-                if name != "exact":
-                    atoms.calc.begin_timing()
-                if torch.cuda.is_available() and str(args.device).startswith("cuda"):
-                    torch.cuda.reset_peak_memory_stats()
-                for iteration in range(args.evaluations):
-                    atoms.calc.results={}
-                    sync(model.device); start=time.perf_counter()
-                    atoms.get_forces(); sync(model.device)
-                    elapsed=time.perf_counter()-start
-                    rows.append({"frame":chosen_steps[frame_index],"arm":name,"repeat":repeat,"iteration":iteration,"wall_seconds":elapsed})
-                if name != "exact":
-                    component_rows.extend({"frame":chosen_steps[frame_index],"arm":name,"repeat":repeat,**record} for record in atoms.calc.records)
-                if torch.cuda.is_available() and str(args.device).startswith("cuda"):
-                    key=(name,repeat,chosen_steps[frame_index])
-                    memory_peaks[str(key)] = {
-                        "allocated": int(torch.cuda.max_memory_allocated()),
-                        "reserved": int(torch.cuda.max_memory_reserved()),
-                    }
+                    atoms=base.copy()
+                    if name=="exact": atoms.calc=model.calculator
+                    else:
+                        atoms.calc = IntegratedFrostCalculator(
+                            model, args.tolerance_A, cache_mode=mode,
+                            cache_policy=policy, reuse_fraction=reuse_fraction,
+                        )
+                        atoms.calc.batched_action_chunk_size = args.batched_action_chunk_size
+                    for _ in range(args.warmup):
+                        atoms.calc.results={}; atoms.get_forces(); sync(model.device)
+                    if name != "exact":
+                        atoms.calc.begin_timing()
+                    if torch.cuda.is_available() and str(args.device).startswith("cuda"):
+                        torch.cuda.reset_peak_memory_stats()
+                    for iteration in range(args.evaluations):
+                        atoms.calc.results={}
+                        sync(model.device); start=time.perf_counter()
+                        atoms.get_forces(); sync(model.device)
+                        elapsed=time.perf_counter()-start
+                        rows.append({"frame":chosen_steps[frame_index],"arm":name,"repeat":repeat,"iteration":iteration,"wall_seconds":elapsed})
+                        progress.update(1)
+                    if name != "exact":
+                        component_rows.extend({"frame":chosen_steps[frame_index],"arm":name,"repeat":repeat,**record} for record in atoms.calc.records)
+                    if torch.cuda.is_available() and str(args.device).startswith("cuda"):
+                        key=(name,repeat,chosen_steps[frame_index])
+                        memory_peaks[str(key)] = {
+                            "allocated": int(torch.cuda.max_memory_allocated()),
+                            "reserved": int(torch.cuda.max_memory_reserved()),
+                        }
     with (out/"timings.csv").open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
     summary=[]
@@ -144,6 +156,6 @@ if __name__=="__main__":
     p.add_argument("--dtype",choices=["float32","float64"],default="float64")
     p.add_argument("--cache-mode", type=int, choices=[4], default=4,
                    help="Primary first-order benchmark mode; mode 3 is always included as a reference arm")
-    p.add_argument("--batched-action-chunk-size", type=int, default=256)
+    p.add_argument("--batched-action-chunk-size", type=int, default=1024)
     p.add_argument("--output-dir",default="results/active/w4_inference")
     run(p.parse_args())

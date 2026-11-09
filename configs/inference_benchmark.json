@@ -7,7 +7,7 @@
   "evaluations": 100,
   "repeats": 3,
   "cache_mode": 4,
-  "batched_action_chunk_size": 256,
+  "batched_action_chunk_size": 1024,
   "tolerance_A": 0.01,
   "output_root": "results/active/w4_inference"
 }

@@ -17,8 +17,8 @@
   "tolerances_A": [0.005, 0.01, 0.02],
   "accuracy_sample_count": 50,
   "accuracy_cache_modes": [1, 2],
-  "batched_action_chunk_size": 256,
-  "jacobian_chunk_size": 256,
+  "batched_action_chunk_size": 1024,
+  "jacobian_chunk_size": 64,
   "sampling": "time_stratified",
   "output_root": "results/active/scale"
 }
