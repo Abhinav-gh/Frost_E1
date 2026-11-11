@@ -132,7 +132,11 @@ class IntegratedFrostCalculator(Calculator):
             clean_mask[:] = False
         cache_update_seconds = time.perf_counter() - cache_start
         original_calc = current_atoms.calc
-        audit_capture = {} if self.audit_capture_enabled else None
+        audit_capture = (
+            {"capture_messages": True}
+            if self.audit_capture_enabled
+            else ({} if self.timing_enabled else None)
+        )
         batched_action = None
         if self.cache_mode == 4:
             batched_action = {
@@ -159,7 +163,7 @@ class IntegratedFrostCalculator(Calculator):
         finally:
             current_atoms.calc = original_calc
         model_evaluation_seconds = time.perf_counter() - evaluation_start
-        if audit_capture is not None:
+        if audit_capture is not None and self.audit_capture_enabled:
             audit_capture["edge_keys"] = list(current_keys)
             audit_capture["edge_displacement_A"] = np.asarray([
                 float(np.linalg.norm(edges[key]["r_ij"] - self.cache._entries[key].ref_r_ij))
@@ -200,6 +204,32 @@ class IntegratedFrostCalculator(Calculator):
                 ),
                 "max_reference_age_steps": max(
                     (entry.age for entry in self.cache._entries.values()), default=0
+                ),
+                "eligible_clean_edges": int(
+                    (audit_capture or {}).get("message_metrics", {}).get(
+                        "eligible_clean_edges", clean_mask.sum().item()
+                    )
+                ),
+                "substituted_edges": int(
+                    (audit_capture or {}).get("message_metrics", {}).get(
+                        "substituted_edges", 0
+                    )
+                ),
+                "dirty_edges": int(
+                    (audit_capture or {}).get("message_metrics", {}).get(
+                        "dirty_edges", (~clean_mask).sum().item()
+                    )
+                ),
+                "first_order_action_edges": int(
+                    (audit_capture or {}).get("message_metrics", {}).get(
+                        "first_order_action_edges", 0
+                    )
+                ),
+                "exact_message_edges": int((~clean_mask).sum().item()),
+                "cached_message_edges": int(
+                    (audit_capture or {}).get("message_metrics", {}).get(
+                        "substituted_edges", 0
+                    )
                 ),
                 "reference_action_edges": int(clean_mask.sum().item()),
                 "action_mode": self.cache_mode,

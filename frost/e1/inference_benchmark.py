@@ -90,10 +90,15 @@ def run(args):
         summary.append({"arm":name,"n":len(x),"median_seconds":float(np.median(x)),"speedup_vs_exact_median":float(exact_median/np.median(x)),"iqr_seconds":float(np.percentile(x,75)-np.percentile(x,25)),
                         "p90_seconds":float(np.percentile(x,90)),"p95_seconds":float(np.percentile(x,95)),"throughput_evals_s":float(1/x.mean()),**phase})
     payload={"experiment":"fixed_configuration_calculator_benchmark","git_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+      "trajectory": str(args.trajectory), "steps": chosen_steps,
       "model":args.model,"device":model.device,"dtype":args.dtype,"frames":chosen_steps,"warmup":args.warmup,"evaluations_per_frame_arm":args.evaluations,
       "repeats":args.repeats,"synchronization":"CUDA synchronized immediately before and after each full calculator evaluation","summaries":summary,
       "cache_mode": args.cache_mode,
       "batched_action_chunk_size": args.batched_action_chunk_size,
+      "torch_version": torch.__version__,
+      "cuda_version": torch.version.cuda,
+      "cuda_available": bool(torch.cuda.is_available()),
+      "gpu_name": (torch.cuda.get_device_name() if torch.cuda.is_available() else None),
       "peak_cuda_memory_bytes_by_arm_repeat_frame":memory_peaks,
       "gpu_utilization":"not sampled; timing is synchronized wall time",
       "limitations":"Each arm uses fixed saved configurations; this does not measure MD rollout cost. Component times are host wall slices; use the synchronized full-calculator wall time as the performance result."}

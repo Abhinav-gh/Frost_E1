@@ -560,7 +560,8 @@ def compute_cached_forces(
         "mode": mode,
         "clean_mask": torch.as_tensor(clean_mask, dtype=torch.bool),
         "g_ref": torch.as_tensor(g_ref),
-        "capture_messages": audit_capture is not None,
+        "capture_messages": bool(audit_capture and audit_capture.get("capture_messages", False)),
+        "metrics": {},
     }
     if mode == 2:
         if J_ref is None or vectors is None or vectors_ref is None:
@@ -588,7 +589,7 @@ def compute_cached_forces(
     from frost.e1.mace_patch import capture_layer1_vectors
     with capture_layer1_vectors(model_interface._calculator.models[0], state), apply_frost_patch(model_interface._calculator.models[0], state):
         result = model_interface.evaluate(atoms)
-    if audit_capture is not None:
+    if audit_capture is not None and state["capture_messages"]:
         exact = state["mji_exact"].detach().cpu().numpy().copy()
         used = state["mji_used"].detach().cpu().numpy().copy()
         audit_capture.update({
@@ -597,6 +598,8 @@ def compute_cached_forces(
             "clean_mask": np.asarray(clean_mask, dtype=bool).copy(),
             "separate_storage": not np.shares_memory(exact, used),
         })
+    if audit_capture is not None:
+        audit_capture["message_metrics"] = dict(state["metrics"])
     return result
 
 

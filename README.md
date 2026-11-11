@@ -205,6 +205,30 @@ python -m frost.e1.cost_model_analysis \
 Full-calculator time is the primary result. Component times must not be added
 when they overlap.
 
+### P1. W4.1 integrated inference hot-path optimization
+
+W4.1 preserves the historical W4 output and writes to a new directory. Read
+the execution-path audit before measuring:
+
+```bash
+cat docs/W4_1_IMPLEMENTATION_AUDIT.md
+python -m frost.e1.inference_benchmark \
+  --trajectory results/active/generalization/diamond_si_T300_seed42/stage_a/trajectory.traj \
+  --steps 50 250 500 750 950 --n-frames 5 \
+  --warmup 10 --evaluations 100 --repeats 3 \
+  --cache-mode 4 --batch-size 1024 \
+  --output-dir results/active/w4_1_inference_seed42
+python -m frost.e1.cost_model_analysis \
+  --input results/active/w4_1_inference_seed42/cost_components.csv \
+  --output results/active/w4_1_inference_seed42/cost_model.csv
+```
+
+The W4.1 summary records actual eligible, dirty, substituted, and
+first-order-action edge counts plus runtime environment metadata. Compare
+only synchronized complete-calculator latency with the historical W4 result;
+component timings are diagnostic and may overlap. See
+`docs/W4_1_RESULTS.md` for the reporting requirements.
+
 ### P2. E5/W5 matched-start MD rollout
 
 Run a short rollout before a long rollout:

@@ -110,6 +110,26 @@ def test_substitute_cached_messages_mode_zero_ignores_clean_mask():
     assert torch.equal(result, mji)
 
 
+def test_substitute_cached_messages_records_clean_and_dirty_counts():
+    mji = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    state = {
+        "active": True,
+        "mode": 1,
+        "clean_mask": torch.tensor([True, False]),
+        "g_ref": torch.tensor([[9.0, 8.0], [7.0, 6.0]]),
+        "metrics": {},
+    }
+    result = substitute_cached_messages(
+        mji,
+        state,
+    )
+
+    assert torch.equal(result, torch.tensor([[9.0, 8.0], [3.0, 4.0]]))
+    assert state["metrics"]["eligible_clean_edges"] == 1
+    assert state["metrics"]["dirty_edges"] == 1
+    assert state["metrics"]["substituted_edges"] == 1
+
+
 def test_insert_lookup_and_reuse_is_a_cache_hit():
     cache = PerEdgeReferenceCache([0.5])
     key = (0, 1, (0, 0, 0))

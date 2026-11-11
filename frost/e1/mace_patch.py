@@ -20,6 +20,9 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
     if g_ref is None or g_ref.shape != mji.shape:
         raise ValueError("frost_cache g_ref does not match mji")
     clean_mask = clean_mask.to(device=mji.device, dtype=torch.bool)
+    if state.get("metrics") is not None:
+        state["metrics"]["eligible_clean_edges"] = int(clean_mask.sum().item())
+        state["metrics"]["dirty_edges"] = int((~clean_mask).sum().item())
     g_ref = g_ref.to(device=mji.device, dtype=mji.dtype)
     if mode == 1:
         replacement = g_ref
@@ -53,6 +56,8 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
         if batched_action is None or vectors is None or vectors_ref is None:
             raise ValueError("Batched JVP/VJP reuse requires batched_action and reference vectors")
         clean_indices = torch.nonzero(clean_mask, as_tuple=False).flatten()
+        if state.get("metrics") is not None:
+            state["metrics"]["first_order_action_edges"] = int(clean_indices.numel())
         replacement = mji
         if clean_indices.numel():
             from frost.e1.force_error import _BatchedFirstOrderAction
@@ -67,8 +72,12 @@ def substitute_cached_messages(mji: torch.Tensor, state: dict) -> torch.Tensor:
                 batched_action.get("chunk_size", 256),
             )
             replacement = mji.index_copy(0, clean_indices, clean_messages)
+            if state.get("metrics") is not None:
+                state["metrics"]["substituted_edges"] = int(clean_indices.numel())
     else:
         raise ValueError(f"Unsupported Frost cache mode: {mode}")
+    if state.get("metrics") is not None and mode != 4:
+        state["metrics"]["substituted_edges"] = int(clean_mask.sum().item())
     return torch.where(clean_mask[:, None], replacement, mji)
 
 
